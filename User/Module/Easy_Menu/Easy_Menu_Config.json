@@ -1,0 +1,559 @@
+[
+  {
+    "name": "Start page",
+    "type": "展示页面",
+    "properties": {
+      "变量名": "start_page",
+      "周期": "16",
+      "周期回调函数": true,
+      "进入回调函数": true,
+      "退出回调函数": true
+    }
+  },
+  {
+    "name": "Main",
+    "type": "普通页面",
+    "properties": {
+      "变量名": "main_page"
+    },
+    "children": [
+      {
+        "name": "RTC 时钟",
+        "type": "展示页面",
+        "properties": {
+          "变量名": "rtc_page",
+          "周期": "100",
+          "周期回调函数": true,
+          "进入回调函数": true,
+          "退出回调函数": true
+        }
+      },
+      {
+        "name": "LED 控制",
+        "type": "普通页面",
+        "properties": {
+          "变量名": "led_page"
+        },
+        "children": [
+          {
+            "name": "LED1",
+            "type": "开关条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "led1",
+              "回调函数": true
+            }
+          },
+          {
+            "name": "LED2",
+            "type": "开关条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "led2",
+              "回调函数": true
+            }
+          },
+          {
+            "name": "LED3",
+            "type": "开关条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "led3",
+              "回调函数": true
+            }
+          },
+          {
+            "name": "LED4",
+            "type": "开关条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "led4",
+              "回调函数": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "灰度传感器",
+        "type": "展示页面",
+        "properties": {
+          "变量名": "show_page_1",
+          "周期": "10",
+          "周期回调函数": true,
+          "进入回调函数": false,
+          "退出回调函数": false
+        }
+      },
+      {
+        "name": "陀螺仪",
+        "type": "普通页面",
+        "properties": {
+          "变量名": "gyroscope_page"
+        },
+        "children": [
+          {
+            "name": "Roll",
+            "type": "展示条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "roll",
+              "变量类型": "float_val",
+              "周期": "10",
+              "回调函数": true
+            }
+          },
+          {
+            "name": "Pitch",
+            "type": "展示条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "pitch",
+              "变量类型": "float_val",
+              "周期": "10",
+              "回调函数": true
+            }
+          },
+          {
+            "name": "Yaw",
+            "type": "展示条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "yaw",
+              "变量类型": "float_val",
+              "周期": "10",
+              "回调函数": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "直流电机",
+        "type": "普通页面",
+        "properties": {
+          "变量名": "Motor_Page"
+        },
+        "children": [
+          {
+            "name": "左电机",
+            "type": "普通页面",
+            "properties": {
+              "变量名": "ordinary_page_2"
+            },
+            "children": [
+              {
+                "name": "PWM",
+                "type": "数据条目",
+                "properties": {
+                  "初始值": "0",
+                  "变量名": "left_pwm",
+                  "变量类型": "int32_val",
+                  "回调函数": true,
+                  "最大值": "1000",
+                  "最小值": "-1000",
+                  "步进": "100"
+                }
+              },
+              {
+                "name": "重置",
+                "type": "文本条目",
+                "properties": {
+                  "回调函数": true
+                }
+              }
+            ]
+          },
+          {
+            "name": "右电机",
+            "type": "普通页面",
+            "properties": {
+              "变量名": "ordinary_page_3"
+            },
+            "children": [
+              {
+                "name": "PWM",
+                "type": "数据条目",
+                "properties": {
+                  "初始值": "0",
+                  "变量名": "right_pwm",
+                  "变量类型": "int32_val",
+                  "回调函数": true,
+                  "最大值": "1000",
+                  "最小值": "-1000",
+                  "步进": "100"
+                }
+              },
+              {
+                "name": "重置",
+                "type": "文本条目",
+                "properties": {
+                  "回调函数": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "编码器",
+        "type": "普通页面",
+        "properties": {
+          "变量名": "Encoder_Page"
+        },
+        "children": [
+          {
+            "name": "左 RPM",
+            "type": "展示条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "left_rpm",
+              "变量类型": "float_val",
+              "周期": "10",
+              "回调函数": true
+            }
+          },
+          {
+            "name": "右 RPM",
+            "type": "展示条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "right_rpm",
+              "变量类型": "float_val",
+              "周期": "10",
+              "回调函数": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "PID 控制",
+        "type": "普通页面",
+        "properties": {
+          "变量名": "ordinary_page_4"
+        },
+        "children": [
+          {
+            "name": "左轮速度环",
+            "type": "普通页面",
+            "properties": {
+              "变量名": "ordinary_page_5"
+            },
+            "children": [
+              {
+                "name": "目标值",
+                "type": "数据条目",
+                "properties": {
+                  "初始值": "100",
+                  "变量名": "left_target",
+                  "变量类型": "int32_val",
+                  "回调函数": true,
+                  "最大值": "NULL",
+                  "最小值": "NULL",
+                  "步进": "50"
+                }
+              },
+              {
+                "name": "Kp",
+                "type": "数据条目",
+                "properties": {
+                  "初始值": "0",
+                  "变量名": "left_kp",
+                  "变量类型": "float_val",
+                  "回调函数": true,
+                  "最大值": "NULL",
+                  "最小值": "NULL",
+                  "步进": "0.1"
+                }
+              },
+              {
+                "name": "Ki",
+                "type": "数据条目",
+                "properties": {
+                  "初始值": "0",
+                  "变量名": "left_ki",
+                  "变量类型": "float_val",
+                  "回调函数": true,
+                  "最大值": "NULL",
+                  "最小值": "NULL",
+                  "步进": "0.1"
+                }
+              },
+              {
+                "name": "Kd",
+                "type": "数据条目",
+                "properties": {
+                  "初始值": "0",
+                  "变量名": "left_kd",
+                  "变量类型": "float_val",
+                  "回调函数": true,
+                  "最大值": "NULL",
+                  "最小值": "NULL",
+                  "步进": "0.1"
+                }
+              }
+            ]
+          },
+          {
+            "name": "右轮速度环",
+            "type": "普通页面",
+            "properties": {
+              "变量名": "ordinary_page_6"
+            },
+            "children": [
+              {
+                "name": "目标值",
+                "type": "数据条目",
+                "properties": {
+                  "初始值": "100",
+                  "变量名": "right_target",
+                  "变量类型": "int32_val",
+                  "回调函数": true,
+                  "最大值": "NULL",
+                  "最小值": "NULL",
+                  "步进": "50"
+                }
+              },
+              {
+                "name": "Kp",
+                "type": "数据条目",
+                "properties": {
+                  "初始值": "0",
+                  "变量名": "right_kp",
+                  "变量类型": "float_val",
+                  "回调函数": true,
+                  "最大值": "NULL",
+                  "最小值": "NULL",
+                  "步进": "0.1"
+                }
+              },
+              {
+                "name": "Ki",
+                "type": "数据条目",
+                "properties": {
+                  "初始值": "0",
+                  "变量名": "right_ki",
+                  "变量类型": "float_val",
+                  "回调函数": true,
+                  "最大值": "NULL",
+                  "最小值": "NULL",
+                  "步进": "0.1"
+                }
+              },
+              {
+                "name": "Kd",
+                "type": "数据条目",
+                "properties": {
+                  "初始值": "0",
+                  "变量名": "right_kd",
+                  "变量类型": "float_val",
+                  "回调函数": true,
+                  "最大值": "NULL",
+                  "最小值": "NULL",
+                  "步进": "0.1"
+                }
+              }
+            ]
+          },
+          {
+            "name": "状态",
+            "type": "枚举条目",
+            "properties": {
+              "回调函数": true,
+              "枚举字符串": [
+                "暂停",
+                "启动"
+              ],
+              "枚举数量": "2"
+            }
+          }
+        ]
+      },
+      {
+        "name": "步进电机",
+        "type": "普通页面",
+        "properties": {
+          "变量名": "ordinary_page_7"
+        },
+        "children": [
+          {
+            "name": "左电机转速",
+            "type": "数据条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "left_step_speed",
+              "变量类型": "int32_val",
+              "回调函数": true,
+              "最大值": "NULL",
+              "最小值": "NULL",
+              "步进": "100"
+            }
+          },
+          {
+            "name": "右电机转速",
+            "type": "数据条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "right_step_speed",
+              "变量类型": "int32_val",
+              "回调函数": true,
+              "最大值": "NULL",
+              "最小值": "NULL",
+              "步进": "100"
+            }
+          },
+          {
+            "name": "重置",
+            "type": "文本条目",
+            "properties": {
+              "回调函数": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "温湿度传感器",
+        "type": "普通页面",
+        "properties": {
+          "变量名": "ordinary_page_8"
+        },
+        "children": [
+          {
+            "name": "温度",
+            "type": "展示条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "temp",
+              "变量类型": "float_val",
+              "周期": "100",
+              "回调函数": true
+            }
+          },
+          {
+            "name": "湿度",
+            "type": "展示条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "rh",
+              "变量类型": "float_val",
+              "周期": "100",
+              "回调函数": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "Flash",
+        "type": "普通页面",
+        "properties": {
+          "变量名": "ordinary_page_9"
+        },
+        "children": [
+          {
+            "name": "重启次数",
+            "type": "展示条目",
+            "properties": {
+              "初始值": "0",
+              "变量名": "reset_count",
+              "变量类型": "uint8_val",
+              "周期": "10",
+              "回调函数": true
+            }
+          },
+          {
+            "name": "重置",
+            "type": "文本条目",
+            "properties": {
+              "回调函数": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "关于",
+        "type": "普通页面",
+        "properties": {
+          "变量名": "ordinary_page_10"
+        },
+        "children": [
+          {
+            "name": "米醋电控板",
+            "type": "文本条目",
+            "properties": {
+              "回调函数": false
+            }
+          },
+          {
+            "name": "外设测试例程",
+            "type": "文本条目",
+            "properties": {
+              "回调函数": false
+            }
+          },
+          {
+            "name": "环境:",
+            "type": "文本条目",
+            "properties": {
+              "回调函数": false
+            }
+          },
+          {
+            "name": "米醋电控板 v1",
+            "type": "文本条目",
+            "properties": {
+              "回调函数": false
+            }
+          },
+          {
+            "name": "作者:",
+            "type": "文本条目",
+            "properties": {
+              "回调函数": false
+            }
+          },
+          {
+            "name": "烟雨梦兮",
+            "type": "文本条目",
+            "properties": {
+              "回调函数": false
+            }
+          },
+          {
+            "name": "菜单框架:",
+            "type": "文本条目",
+            "properties": {
+              "回调函数": false
+            }
+          },
+          {
+            "name": "Easy_Menu V3",
+            "type": "文本条目",
+            "properties": {
+              "回调函数": false
+            }
+          },
+          {
+            "name": "Github:",
+            "type": "展示页面",
+            "properties": {
+              "变量名": "github_page_1",
+              "周期": "100",
+              "周期回调函数": false,
+              "进入回调函数": true,
+              "退出回调函数": false
+            }
+          },
+          {
+            "name": "Bilibili:",
+            "type": "展示页面",
+            "properties": {
+              "变量名": "bilibili_page_2",
+              "周期": "100",
+              "周期回调函数": false,
+              "进入回调函数": true,
+              "退出回调函数": false
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

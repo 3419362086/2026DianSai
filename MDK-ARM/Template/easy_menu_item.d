@@ -1,0 +1,9 @@
+template\easy_menu_item.o: ..\User\Module\Easy_Menu\Easy_Menu_Item.c
+template\easy_menu_item.o: ..\User\Module\Easy_Menu\Easy_Menu_Item.h
+template\easy_menu_item.o: ..\User\Module\Easy_Menu\Easy_Menu.h
+template\easy_menu_item.o: D:\keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+template\easy_menu_item.o: D:\keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+template\easy_menu_item.o: D:\keil_v5\ARM\ARMCC\Bin\..\include\string.h
+template\easy_menu_item.o: D:\keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+template\easy_menu_item.o: D:\keil_v5\ARM\ARMCC\Bin\..\include\limits.h
+template\easy_menu_item.o: D:\keil_v5\ARM\ARMCC\Bin\..\include\float.h
