@@ -57,13 +57,13 @@ void Gyroscope_Task(void)
   Gyroscope_Update_Euler(&icm20608.gyro, &icm20608.accel, dt);
   
   // 获取解算后的欧拉角
-  Gyroscope_Get_Euler_Angles(&icm20608.Pitch, &icm20608.Roll, &icm20608.Yaw);
+  Gyroscope_Get_Euler_Angles(&icm20608.Roll,&icm20608.Pitch, &icm20608.Yaw);
   
   // 抵消初始的 -179
-  if(icm20608.Pitch < 0)
-    icm20608.Pitch = 180 + icm20608.Pitch;
+  if(icm20608.Roll < 0)
+    icm20608.Roll = 180 + icm20608.Roll;
   else
-    icm20608.Pitch = 180 - icm20608.Pitch;
+    icm20608.Roll = icm20608.Roll - 180;
   
     
   // 记录第一个有效欧拉角
@@ -74,7 +74,7 @@ void Gyroscope_Task(void)
     first_gyroscope_flag = 1;
   }
   
-  // Uart_Printf(DEBUG_UART,"Roll=%.2f Pitch=%.2f Yaw=%.2f\r\n",icm20608.Roll,icm20608.Pitch,icm20608.Yaw);  
+  Uart_Printf(DEBUG_UART,"Roll=%.2f Pitch=%.2f Yaw=%.2f\r\n",icm20608.Roll,icm20608.Pitch,icm20608.Yaw);  
 
   last_gyro_time = current_time;
 }
