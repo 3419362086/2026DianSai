@@ -25,10 +25,13 @@ void pid_init(PID_T * _tpPID, float _kp, float _ki, float _kd, float _target, fl
     _tpPID->ki = _ki;          // 积分
     _tpPID->kd = _kd;          // 微分
     _tpPID->target = _target;  // 目标值
+    _tpPID->current = 0;       // 当前值清零
     _tpPID->limit = _limit;    // 限幅值
+    _tpPID->error = 0;         // 当前误差清零
     _tpPID->integral = 0;      // 积分项清零
     _tpPID->last_error = 0;    // 上次误差清零
     _tpPID->last2_error = 0;   // 上上次误差清零
+    _tpPID->last_out = 0;      // 上次输出清零
     _tpPID->out = 0;           // 输出值清零
     _tpPID->p_out = 0;         // P输出清零
     _tpPID->i_out = 0;         // I输出清零
@@ -83,9 +86,12 @@ void pid_set_limit(PID_T * _tpPID, float _limit)
  *******************************************************************************/
 void pid_reset(PID_T * _tpPID)
 {
+    _tpPID->current = 0;
+    _tpPID->error = 0;
     _tpPID->integral = 0;
     _tpPID->last_error = 0;
     _tpPID->last2_error = 0;
+    _tpPID->last_out = 0;
     _tpPID->out = 0;
     _tpPID->p_out = 0;
     _tpPID->i_out = 0;
@@ -212,4 +218,3 @@ void __attribute__((unused)) pid_app_limit_integral(PID_T *pid, float min, float
         pid->integral = min;
     }
 }
-

@@ -48,7 +48,7 @@ void PID_Init(void)
     Easy_Menu_Ui_Data.right_kd = pid_params_right.kd;
 }
 
-unsigned char pid_running = 1; // PID 控制使能开关
+volatile unsigned char pid_running = 0; // 默认暂停，等待计时页面启动新一轮运行
 
 void PID_Task(void)
 {

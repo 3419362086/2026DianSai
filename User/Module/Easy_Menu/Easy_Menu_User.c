@@ -35,7 +35,7 @@ Easy_Menu_Ui_Data_Layout_t Easy_Menu_Ui_Data = {
     .rh = 0.0f,
     .reset_count = 0,
 };
-/* ============================================================== 页面、条目定义 ============================================================== */    
+/* ============================================================== 页面、条目定义 ============================================================== */
 Show_Page start_page;
 Ordinary_Page main_page;
     Goto_Item main_page_1_item;
@@ -49,6 +49,7 @@ Ordinary_Page main_page;
     Goto_Item main_page_9_item;
     Goto_Item main_page_10_item;
     Goto_Item main_page_11_item;
+    Goto_Item main_page_12_item;
     Show_Page rtc_page;
     Ordinary_Page led_page;
         Switch_Item led_page_1_item;
@@ -109,6 +110,7 @@ Ordinary_Page main_page;
         Goto_Item ordinary_page_10_10_item;
         Show_Page github_page_1;
         Show_Page bilibili_page_2;
+    Show_Page vehicle_run_timer_page;
 /* ================================================================= 枚举列表 ================================================================= */
 char *ordinary_page_4_3_item_enum_str[2] = {
     "暂停",
@@ -351,8 +353,54 @@ void Ordinary_Page_9_2_Item_Callback(char *str)
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE VALUE BEGIN */
 unsigned char bmp_index = 0;
+static uint32_t vehicle_run_start_tick = 0;
+static uint32_t vehicle_run_display_seconds = UINT32_MAX;
+static unsigned char vehicle_run_display_state = 0xFFU;
 /* USER CODE VALUE END */
 /* Private function ----------------------------------------------------------*/
+static void Vehicle_Run_Start(void)
+{
+    uint32_t interrupt_state = __get_PRIMASK();
+
+    /* 先禁止中断中的 PID 任务，再清状态，避免新一轮沿用旧输出。 */
+    __disable_irq();
+    pid_running = 0;
+    Motor_Stop(&left_motor);
+    Motor_Stop(&right_motor);
+    pid_reset(&pid_speed_left);
+    pid_reset(&pid_speed_right);
+    vehicle_run_start_tick = HAL_GetTick();
+    pid_running = 1;
+    if(interrupt_state == 0U)
+    {
+        __enable_irq();
+    }
+
+    vehicle_run_display_seconds = UINT32_MAX;
+    vehicle_run_display_state = 0xFFU;
+}
+
+static void Vehicle_Run_Reset(void)
+{
+    uint32_t interrupt_state = __get_PRIMASK();
+
+    /* 复位期间保持 PID 禁用，最后显式关断左右电机 PWM。 */
+    __disable_irq();
+    pid_running = 0;
+    pid_reset(&pid_speed_left);
+    pid_reset(&pid_speed_right);
+    Motor_Stop(&left_motor);
+    Motor_Stop(&right_motor);
+    vehicle_run_start_tick = 0;
+    if(interrupt_state == 0U)
+    {
+        __enable_irq();
+    }
+
+    vehicle_run_display_seconds = UINT32_MAX;
+    vehicle_run_display_state = 0xFFU;
+}
+
 void Start_Page_Enter_Callback(void)
 {
     /* USER CODE BEGIN */
@@ -462,8 +510,56 @@ void Bilibili_Page_2_Enter_Callback(void)
     /* USER CODE END */
 }
 
+void Vehicle_Run_Timer_Page_Enter_Callback(void)
+{
+    vehicle_run_display_seconds = UINT32_MAX;
+    vehicle_run_display_state = 0xFFU;
+}
+
+void Vehicle_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input)
+{
+    uint32_t elapsed_seconds = 0;
+    unsigned char running_state;
+
+    (void)temp;
+
+    if(user_input == EASY_MENU_UP)
+    {
+        Vehicle_Run_Start();
+    }
+    else if(user_input == EASY_MENU_DOWN)
+    {
+        Vehicle_Run_Reset();
+    }
+
+    running_state = (pid_running != 0) ? 1U : 0U;
+
+    if(running_state != vehicle_run_display_state)
+    {
+        Easy_Menu_Area_Clear(0, EASY_MENU_COL_MAX_NUM - 1U, 0, 0);
+        Easy_Menu_Display_String(1, 0, running_state ? "启动" : "暂停");
+        vehicle_run_display_state = running_state;
+    }
+
+    if(running_state != 0U)
+    {
+        elapsed_seconds = (HAL_GetTick() - vehicle_run_start_tick) / 1000U;
+    }
+
+    if(elapsed_seconds != vehicle_run_display_seconds)
+    {
+        Easy_Menu_Area_Clear(0, EASY_MENU_COL_MAX_NUM - 1U, 1, 1);
+        Easy_Menu_Printf(1, 1, "运行时间 %lu:%02lu",
+                         (unsigned long)(elapsed_seconds / 60U),
+                         (unsigned long)(elapsed_seconds % 60U));
+        vehicle_run_display_seconds = elapsed_seconds;
+    }
+
+    Easy_Menu_All_Update();
+}
+
 /* =========================================================== 设置列表（普通页面） =========================================================== */
-Item *main_page_items[11] = {
+Item *main_page_items[12] = {
     ITEM(main_page_1_item),
     ITEM(main_page_2_item),
     ITEM(main_page_3_item),
@@ -474,7 +570,8 @@ Item *main_page_items[11] = {
     ITEM(main_page_8_item),
     ITEM(main_page_9_item),
     ITEM(main_page_10_item),
-    ITEM(main_page_11_item)
+    ITEM(main_page_11_item),
+    ITEM(main_page_12_item)
 };
 
 Item *led_page_items[4] = {
@@ -563,7 +660,7 @@ Item *ordinary_page_10_items[10] = {
 void Easy_Menu_Ui_Init(void)
 {
     Show_Page_Init(NULL, PAGE(start_page), "Start page", 16, Start_Page_Enter_Callback, Start_Page_Period_Callback, Start_Page_Exit_Callback);
-    Ordinary_Page_Init(NULL, PAGE(main_page), "Main", main_page_items, 11);
+    Ordinary_Page_Init(NULL, PAGE(main_page), "Main", main_page_items, 12);
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_1_item), "RTC 时钟", PAGE(rtc_page));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_2_item), "LED 控制", PAGE(led_page));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_3_item), "灰度传感器", PAGE(show_page_1));
@@ -575,6 +672,7 @@ void Easy_Menu_Ui_Init(void)
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_9_item), "温湿度传感器", PAGE(ordinary_page_8));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_10_item), "Flash", PAGE(ordinary_page_9));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_11_item), "关于", PAGE(ordinary_page_10));
+        Goto_Item_Init(PAGE(main_page), ITEM(main_page_12_item), "小车启动计时", PAGE(vehicle_run_timer_page));
     Show_Page_Init(PAGE(main_page), PAGE(rtc_page), "RTC 时钟", 100, Rtc_Page_Enter_Callback, Rtc_Page_Period_Callback, Rtc_Page_Exit_Callback);
     Ordinary_Page_Init(PAGE(main_page), PAGE(led_page), "LED 控制", led_page_items, 4);
         Switch_Item_Init(PAGE(led_page), ITEM(led_page_1_item), "LED1", &Easy_Menu_Ui_Data.led1, Led_Page_1_Item_Callback);
@@ -635,6 +733,7 @@ void Easy_Menu_Ui_Init(void)
         Goto_Item_Init(PAGE(ordinary_page_10), ITEM(ordinary_page_10_10_item), "Bilibili:", PAGE(bilibili_page_2));
     Show_Page_Init(PAGE(ordinary_page_10), PAGE(github_page_1), "Github:", 100, Github_Page_1_Enter_Callback, NULL, NULL);
     Show_Page_Init(PAGE(ordinary_page_10), PAGE(bilibili_page_2), "Bilibili:", 100, Bilibili_Page_2_Enter_Callback, NULL, NULL);
+    Show_Page_Init(PAGE(main_page), PAGE(vehicle_run_timer_page), "启动计时", 100, Vehicle_Run_Timer_Page_Enter_Callback, Vehicle_Run_Timer_Page_Period_Callback, NULL);
     
     Easy_Menu_Goto_Page(PAGE(start_page));
 }

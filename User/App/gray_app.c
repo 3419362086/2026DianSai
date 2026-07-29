@@ -32,6 +32,8 @@ float BlackLine_SetTurn(void)
 
     if (blackline_count > 0)
         Err = weight_sum / blackline_count; /* 加权平均得到偏差 */
+    else
+        Err = g_line_position_error;
 
     return Err;
 }
