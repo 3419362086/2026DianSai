@@ -1,6 +1,7 @@
 #include "gray_app.h"
 
 unsigned char gray_digtal; // 灰度传感器开关量
+uint8_t gray_analog[GRAY_CHANNEL_COUNT] = {0};
 
 void Gray_Init(void)
 {
@@ -11,4 +12,5 @@ void Gray_Task(void)
 {
     //获取传感器开关量结果
     gray_digtal = ~IIC_Get_Digtal();
+    IIC_Get_Anolog(gray_analog, GRAY_CHANNEL_COUNT);
 }

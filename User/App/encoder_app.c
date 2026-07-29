@@ -11,8 +11,8 @@ void Encoder_Init(void)
 {
   Uart_Printf(DEBUG_UART, "Encoder_Init ......\r\n");
   
-  Encoder_Driver_Init(&left_encoder, &htim3, 0);
-  Encoder_Driver_Init(&right_encoder, &htim4, 0);
+  Encoder_Driver_Init(&left_encoder, &htim3, 1);
+  Encoder_Driver_Init(&right_encoder, &htim4, 1);
 }
 
 /**

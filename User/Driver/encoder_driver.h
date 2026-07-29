@@ -4,7 +4,7 @@
 #include "main.h"
 
 // 编码器每转一圈的脉冲数 (PPR)
-#define ENCODER_PPR (11 * 30 * 4) // 13线/相, 20倍减速比, 4倍频
+#define ENCODER_PPR (13 * 28 * 4) // 13线/相, 20倍减速比, 4倍频
 // 车轮直径 (单位: 厘米)
 #define WHEEL_DIAMETER_CM 6.5f
 

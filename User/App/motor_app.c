@@ -13,5 +13,6 @@ void Motor_Init(void)
 
 void Motor_Task(void)
 {
-
+    Motor_Set_Speed(&left_motor, 0);
+    Motor_Set_Speed(&right_motor,0);
 }
