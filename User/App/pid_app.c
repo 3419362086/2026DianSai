@@ -1,6 +1,6 @@
 #include "pid_app.h"
 
-int basic_speed = 400; // 基础速度
+int basic_speed = 400; // 基础速度（单位：rpm）
 
 /* PID 控制器实例 */
 PID_T pid_speed_left;  // 左轮速度环
@@ -25,17 +25,17 @@ PidParams_t pid_params_right = {
 
 void PID_Init(void)
 {
-  pid_init(&pid_speed_left,
-           pid_params_left.kp, pid_params_left.ki, pid_params_left.kd,
-           0.0f, pid_params_left.out_max);
-  
-  pid_init(&pid_speed_right,
-           pid_params_right.kp, pid_params_right.ki, pid_params_right.kd,
-           0.0f, pid_params_right.out_max);
-  
-  
-  pid_set_target(&pid_speed_left, basic_speed);
-  pid_set_target(&pid_speed_right, basic_speed);
+    pid_init(&pid_speed_left,
+            pid_params_left.kp, pid_params_left.ki, pid_params_left.kd,
+            0.0f, pid_params_left.out_max);
+    
+    pid_init(&pid_speed_right,
+            pid_params_right.kp, pid_params_right.ki, pid_params_right.kd,
+            0.0f, pid_params_right.out_max);
+    
+    
+    pid_set_target(&pid_speed_left, basic_speed);
+    pid_set_target(&pid_speed_right, basic_speed);
 }
 
 unsigned char pid_running = 0; // PID 控制使能开关

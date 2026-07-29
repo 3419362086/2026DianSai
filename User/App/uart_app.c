@@ -92,10 +92,9 @@ void Uart5_Task(void)
     rt_ringbuffer_get(&uart5_ring_buffer, uart5_data_buffer, uart_data_len);
     uart5_data_buffer[uart_data_len] = '\0';
     /* 数据解析 */
-//    Uart_Printf(DEBUG_UART, "UART5 Ringbuffer:%s\r\n", uart5_data_buffer);
-    Uart_Printf(&huart5, "UART5 Ringbuffer:%s\r\n", uart5_data_buffer);
-    
-//    Blue_Key_Parse(uart5_data_buffer);
+    // Uart_Printf(DEBUG_UART, "UART5 Ringbuffer:%s\r\n", uart5_data_buffer);
+    // Uart_Printf(&huart5, "UART5 Ringbuffer:%s\r\n", uart5_data_buffer);
+    // Blue_Key_Parse(uart5_data_buffer);
     
     memset(uart5_data_buffer, 0, uart_data_len);
   }
