@@ -7,7 +7,7 @@
  * 公式为 base_pwm = slope * |target_rpm| + intercept，左右轮分别拟合，
  * 用于补偿同一 PWM 下左右轮转速不一致；速度 PID 只修正剩余误差。
  */
-#define LEFT_BASE_PWM_SLOPE       0.9812202f
+#define LEFT_BASE_PWM_SLOPE       0.9262202f
 #define LEFT_BASE_PWM_INTERCEPT   537.11115f
 #define RIGHT_BASE_PWM_SLOPE      0.9850767f
 #define RIGHT_BASE_PWM_INTERCEPT  531.65649f
@@ -24,36 +24,36 @@ PID_T pid_line;        // 循迹外环，输出目标角速度（deg/s）
 
 /* PID 参数定义 */
 PidParams_t pid_params_left = {
-    .kp = 16.05f,        
+    .kp = 4.0f,        
     .ki = 0.0000f,      
-    .kd = 0.03f,      
+    .kd = 0.5f,      
     .out_min = -999.0f,
     .out_max = 999.0f,
 };
 
 PidParams_t pid_params_right = {
-    .kp = 15.8f,        
+    .kp = 5.0f,        
     .ki = 0.0000f,      
-    .kd = 0.03f,      
+    .kd = 0.4f,      
     .out_min = -999.0f,
     .out_max = 999.0f,
 };
 
 /* 外环初值仅用于建立控制链路，需结合实车单位和响应继续调参。 */
 PidParams_t pid_params_angle = {
-    .kp = 1.0f,
-    .ki = 0.0f,
-    .kd = 0.0f,
-    .out_min = -100.0f,
-    .out_max = 100.0f,
+    .kp = 10.0f,
+    .ki = 0.075f,
+    .kd = 1.0f,
+    .out_min = -50.0f,
+    .out_max = 50.0f,
 };
 
 PidParams_t pid_params_line = {
-    .kp = 5.0f,
+    .kp = 50.0f,
     .ki = 0.0f,
     .kd = 0.0f,
-    .out_min = -100.0f,
-    .out_max = 100.0f,
+    .out_min = -80.0f,
+    .out_max = 80.0f,
 };
 
 /*
@@ -138,9 +138,15 @@ void PID_Task(void)
      * 进行左转纠偏。角速度反馈统一为右转为正，并扣除已完成的静态偏置。
      */
     target_yaw_rate = pid_calculate_positional(&pid_line, g_line_position_error);
+    target_yaw_rate = pid_constrain(target_yaw_rate,
+                                    pid_params_line.out_min,
+                                    pid_params_line.out_max);
     pid_set_target(&pid_angle, target_yaw_rate);
     current_yaw_rate = icm20608.gyro.z - euler_angles.gz_bias;
     wheel_speed_diff = pid_calculate_positional(&pid_angle, current_yaw_rate);
+    wheel_speed_diff = pid_constrain(wheel_speed_diff,
+                                     pid_params_angle.out_min,
+                                     pid_params_angle.out_max);
     // Uart_Printf(DEBUG_UART, "Target Yaw Rate: %.2f, Wheel Speed Diff: %.2f, Current Yaw Rate: %.2f\r\n",
     //         target_yaw_rate, wheel_speed_diff, current_yaw_rate);
 

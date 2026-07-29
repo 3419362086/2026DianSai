@@ -45,6 +45,18 @@ static const Uart5_PidCommandContext_t uart5_pid_right_context =
   &Easy_Menu_Ui_Data.right_target
 };
 
+static const Uart5_PidCommandContext_t uart5_pid_angle_context =
+{
+  "angle", &pid_params_angle, &pid_angle,
+  NULL, NULL, NULL, NULL
+};
+
+static const Uart5_PidCommandContext_t uart5_pid_line_context =
+{
+  "line", &pid_params_line, &pid_line,
+  NULL, NULL, NULL, NULL
+};
+
 static void Uart5_Handle_SetPid(const char *line,
                                 const char *arguments,
                                 const void *context)
@@ -54,6 +66,7 @@ static void Uart5_Handle_SetPid(const char *line,
   float kp, ki, kd, out_min, out_max;
   float symmetric_limit;
   char *tail;
+  uint32_t interrupt_state;
   int consumed = 0;
   int parsed_count;
 
@@ -91,6 +104,9 @@ static void Uart5_Handle_SetPid(const char *line,
   symmetric_limit = out_min < 0.0f ? -out_min : out_min;
   if (out_max > symmetric_limit) symmetric_limit = out_max;
 
+  /* PID_Task 在 10 ms 中断中运行，参数组必须作为一个整体更新。 */
+  interrupt_state = __get_PRIMASK();
+  __disable_irq();
   pid_context->params->kp = kp;
   pid_context->params->ki = ki;
   pid_context->params->kd = kd;
@@ -98,10 +114,18 @@ static void Uart5_Handle_SetPid(const char *line,
   pid_context->params->out_max = out_max;
   pid_set_params(pid_context->pid, kp, ki, kd);
   pid_set_limit(pid_context->pid, symmetric_limit);
-  *pid_context->ui_kp = kp;
-  *pid_context->ui_ki = ki;
-  *pid_context->ui_kd = kd;
-  Easy_Menu_Display_Refresh();
+  if (interrupt_state == 0U)
+  {
+    __enable_irq();
+  }
+
+  if (pid_context->ui_kp != NULL)
+  {
+    *pid_context->ui_kp = kp;
+    *pid_context->ui_ki = ki;
+    *pid_context->ui_kd = kd;
+    Easy_Menu_Display_Refresh();
+  }
 
   Uart_Printf(wireless_UART,
               "RX:%s\r\nPID OK: %s kp=%.2f ki=%.2f kd=%.2f out_min=%.2f out_max=%.2f\r\n",
@@ -221,6 +245,8 @@ static const Uart5_CommandEntry_t uart5_command_table[] =
 {
   {"set_pid_speed_left", Uart5_Handle_SetPid, &uart5_pid_left_context},
   {"set_pid_speed_right", Uart5_Handle_SetPid, &uart5_pid_right_context},
+  {"set_pid_angle", Uart5_Handle_SetPid, &uart5_pid_angle_context},
+  {"set_pid_line", Uart5_Handle_SetPid, &uart5_pid_line_context},
   {"set_target_rpm_left", Uart5_Handle_SetTargetRpm, &uart5_pid_left_context},
   {"set_target_rpm_right", Uart5_Handle_SetTargetRpm, &uart5_pid_right_context},
   {"set_motor_pwm", Uart5_Handle_SetMotorPwm, NULL},
@@ -396,16 +422,17 @@ void Uart5_Task(void)
 
   if(pid_running != 0U)
   {
-    /*速度环*/
-    // Uart_Printf(wireless_UART,
-    //             "%.2f,%.2f,%d,%.2f,%.2f,%d\r\n",
-    //             pid_speed_left.target,
-    //             left_encoder.rpm,
-    //             left_motor.speed,
-    //             pid_speed_right.target,
-    //             right_encoder.rpm,
-    //             right_motor.speed);
-    /*位置环*/
+    /* 速度环、角速度环和循迹环的目标值与实际值，供上位机按 8 列 CSV 绘图。 */
+    Uart_Printf(wireless_UART,
+                "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n",
+                pid_speed_left.target,
+                left_encoder.rpm,
+                pid_speed_right.target,
+                right_encoder.rpm,
+                pid_angle.target,
+                pid_angle.current,
+                pid_line.target,
+                g_line_position_error);
   }
 }
 

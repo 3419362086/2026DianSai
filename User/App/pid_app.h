@@ -18,6 +18,8 @@ void PID_Task(void);
 
 extern PidParams_t pid_params_left;
 extern PidParams_t pid_params_right;
+extern PidParams_t pid_params_angle;
+extern PidParams_t pid_params_line;
 
 extern volatile unsigned char pid_running; // PID 控制使能开关
 
