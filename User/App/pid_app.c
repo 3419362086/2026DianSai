@@ -1,4 +1,5 @@
 #include "pid_app.h"
+#include "Easy_Menu_User.h"
 
 int basic_speed = 400; // 基础速度（单位：rpm）
 
@@ -36,22 +37,41 @@ void PID_Init(void)
     
     pid_set_target(&pid_speed_left, basic_speed);
     pid_set_target(&pid_speed_right, basic_speed);
+
+    Easy_Menu_Ui_Data.left_target = basic_speed;
+    Easy_Menu_Ui_Data.left_kp = pid_params_left.kp;
+    Easy_Menu_Ui_Data.left_ki = pid_params_left.ki;
+    Easy_Menu_Ui_Data.left_kd = pid_params_left.kd;
+    Easy_Menu_Ui_Data.right_target = basic_speed;
+    Easy_Menu_Ui_Data.right_kp = pid_params_right.kp;
+    Easy_Menu_Ui_Data.right_ki = pid_params_right.ki;
+    Easy_Menu_Ui_Data.right_kd = pid_params_right.kd;
 }
 
-unsigned char pid_running = 0; // PID 控制使能开关
+unsigned char pid_running = 1; // PID 控制使能开关
 
 void PID_Task(void)
 {
     if(pid_running == 0) return;
     
-    int output_left = 0, output_right = 0;
+    float output_left_float;
+    float output_right_float;
+    int output_left;
+    int output_right;
   
     // 使用位置式 PID 计算利用速度环计算输出
-    output_left = pid_calculate_positional(&pid_speed_left, left_encoder.rpm);
-    output_right = pid_calculate_positional(&pid_speed_right, right_encoder.rpm);
+    output_left_float = pid_calculate_positional(&pid_speed_left, left_encoder.rpm);
+    output_right_float = pid_calculate_positional(&pid_speed_right, right_encoder.rpm);
+
+    // PID_T 仍使用对称内部限幅，这里按串口配置的独立上下限做最终限幅。
+    output_left = (int)pid_constrain(output_left_float,
+                                     pid_params_left.out_min,
+                                     pid_params_left.out_max);
+    output_right = (int)pid_constrain(output_right_float,
+                                      pid_params_right.out_min,
+                                      pid_params_right.out_max);
   
     // 设置电机速度
     Motor_Set_Speed(&left_motor, output_left);
     Motor_Set_Speed(&right_motor, output_right);
 }
-

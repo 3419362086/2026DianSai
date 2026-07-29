@@ -8,7 +8,7 @@
 #include <stdarg.h>
 #include "ringbuffer.h"
 
-#define BUFFER_SIZE 128 // »º³åÇø´óÐ¡
+#define BUFFER_SIZE 256 // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡
 
 void Uart_Tx_Init(void);
 int Uart_Printf(UART_HandleTypeDef *huart, const char *format, ...);  

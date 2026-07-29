@@ -9,32 +9,7 @@
 /* USER CODE PUBLIC END */
 
 /* ================================================================= 占位变量 ================================================================= */
-struct {
-    unsigned char led1;
-    unsigned char led2;
-    unsigned char led3;
-    unsigned char led4;
-    float roll;
-    float pitch;
-    float yaw;
-    signed int left_pwm;
-    signed int right_pwm;
-    float left_rpm;
-    float right_rpm;
-    signed int left_target;
-    float left_kp;
-    float left_ki;
-    float left_kd;
-    signed int right_target;
-    float right_kp;
-    float right_ki;
-    float right_kd;
-    signed int left_step_speed;
-    signed int right_step_speed;
-    float temp;
-    float rh;
-    unsigned char reset_count;
-} Easy_Menu_Ui_Data = {
+Easy_Menu_Ui_Data_Layout_t Easy_Menu_Ui_Data = {
     .led1 = 0,
     .led2 = 0,
     .led3 = 0,
@@ -258,76 +233,62 @@ void Ordinary_Page_4_3_Item_Callback(char *str)
 void Ordinary_Page_5_1_Item_Callback(void *data) // *((signed int*)data)
 {
     /* USER CODE BEGIN */
-    basic_speed = *((signed int*)data);
-    pid_set_target(&pid_speed_left, basic_speed);
+    pid_set_target(&pid_speed_left, *((signed int*)data));
     /* USER CODE END */
 }
 
 void Ordinary_Page_5_2_Item_Callback(void *data) // *((float*)data)
 {
     /* USER CODE BEGIN */
-    if(Easy_Menu_Ui_Data.left_kp == 0)
-        Easy_Menu_Ui_Data.left_kp = pid_speed_left.kp;
-    else
-        pid_speed_left.kp = *((float*)data);
+    pid_params_left.kp = *((float*)data);
+    pid_set_params(&pid_speed_left, pid_params_left.kp, pid_params_left.ki, pid_params_left.kd);
     /* USER CODE END */
 }
 
 void Ordinary_Page_5_3_Item_Callback(void *data) // *((float*)data)
 {
     /* USER CODE BEGIN */
-    if(Easy_Menu_Ui_Data.left_ki == 0)
-        Easy_Menu_Ui_Data.left_ki = pid_speed_left.ki;
-    else
-        pid_speed_left.ki = *((float*)data);
+    pid_params_left.ki = *((float*)data);
+    pid_set_params(&pid_speed_left, pid_params_left.kp, pid_params_left.ki, pid_params_left.kd);
     /* USER CODE END */
 }
 
 void Ordinary_Page_5_4_Item_Callback(void *data) // *((float*)data)
 {
     /* USER CODE BEGIN */
-    if(Easy_Menu_Ui_Data.left_kd == 0)
-        Easy_Menu_Ui_Data.left_kd = pid_speed_left.kd;
-    else
-        pid_speed_left.kd = *((float*)data);
+    pid_params_left.kd = *((float*)data);
+    pid_set_params(&pid_speed_left, pid_params_left.kp, pid_params_left.ki, pid_params_left.kd);
     /* USER CODE END */
 }
 
 void Ordinary_Page_6_1_Item_Callback(void *data) // *((signed int*)data)
 {
     /* USER CODE BEGIN */
-    basic_speed = *((signed int*)data);
-    pid_set_target(&pid_speed_right, basic_speed);
+    pid_set_target(&pid_speed_right, *((signed int*)data));
     /* USER CODE END */
 }
 
 void Ordinary_Page_6_2_Item_Callback(void *data) // *((float*)data)
 {
     /* USER CODE BEGIN */
-    if(Easy_Menu_Ui_Data.right_kp == 0)
-        Easy_Menu_Ui_Data.right_kp = pid_speed_right.kp;
-    else
-        pid_speed_right.kp = *((float*)data);
+    pid_params_right.kp = *((float*)data);
+    pid_set_params(&pid_speed_right, pid_params_right.kp, pid_params_right.ki, pid_params_right.kd);
     /* USER CODE END */
 }
 
 void Ordinary_Page_6_3_Item_Callback(void *data) // *((float*)data)
 {
     /* USER CODE BEGIN */
-    if(Easy_Menu_Ui_Data.right_ki == 0)
-        Easy_Menu_Ui_Data.right_ki = pid_speed_right.ki;
-    else
-        pid_speed_right.ki = *((float*)data);
+    pid_params_right.ki = *((float*)data);
+    pid_set_params(&pid_speed_right, pid_params_right.kp, pid_params_right.ki, pid_params_right.kd);
     /* USER CODE END */
 }
 
 void Ordinary_Page_6_4_Item_Callback(void *data) // *((float*)data)
 {
     /* USER CODE BEGIN */
-    if(Easy_Menu_Ui_Data.right_kd == 0)
-        Easy_Menu_Ui_Data.right_kd = pid_speed_right.kd;
-    else
-        pid_speed_right.kd = *((float*)data);
+    pid_params_right.kd = *((float*)data);
+    pid_set_params(&pid_speed_right, pid_params_right.kp, pid_params_right.ki, pid_params_right.kd);
     /* USER CODE END */
 }
 

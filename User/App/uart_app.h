@@ -4,6 +4,7 @@
 #include "MyDefine.h"
 
 #define DEBUG_UART &huart1
+#define wireless_UART &huart5
 
 void Uart_Init(void);
 void Uart1_Task(void);
