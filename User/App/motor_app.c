@@ -7,12 +7,12 @@ void Motor_Init(void)
 {
     Uart_Printf(DEBUG_UART, "Motor_Init ......\r\n");
   
-    Motor_Config_Init(&left_motor, &htim1, TIM_CHANNEL_2, &htim1, TIM_CHANNEL_1, 1, 600);
-    Motor_Config_Init(&right_motor, &htim1, TIM_CHANNEL_4, &htim1, TIM_CHANNEL_3, 0, 600);
+    Motor_Config_Init(&left_motor, &htim1, TIM_CHANNEL_2, &htim1, TIM_CHANNEL_1, 1, 575);
+    Motor_Config_Init(&right_motor, &htim1, TIM_CHANNEL_4, &htim1, TIM_CHANNEL_3, 0, 575);
 }
 
 void Motor_Task(void)
 {
-    // Motor_Set_Speed(&left_motor, 900);
-    // Motor_Set_Speed(&right_motor,900);
+    // Motor_Set_Speed(&left_motor, 680);
+    // Motor_Set_Speed(&right_motor, 680);
 }

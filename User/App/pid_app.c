@@ -1,7 +1,7 @@
 #include "pid_app.h"
 #include "Easy_Menu_User.h"
 
-int basic_speed = 120; // 基础速度（单位：rpm）
+int basic_speed = 150; // 基础速度（单位：rpm）
 
 /* PID 控制器实例 */
 PID_T pid_speed_left;  // 左轮速度环
@@ -9,17 +9,17 @@ PID_T pid_speed_right; // 右轮速度环
 
 /* PID 参数定义 */
 PidParams_t pid_params_left = {
-    .kp = 1.5f,        
+    .kp = 16.05f,        
     .ki = 0.0000f,      
-    .kd = 0.00f,      
+    .kd = 0.03f,      
     .out_min = -999.0f,
     .out_max = 999.0f,
 };
 
 PidParams_t pid_params_right = {
-    .kp = 1.5f,        
+    .kp = 15.8f,        
     .ki = 0.0000f,      
-    .kd = 0.00f,      
+    .kd = 0.03f,      
     .out_min = -999.0f,
     .out_max = 999.0f,
 };
@@ -72,6 +72,6 @@ void PID_Task(void)
                                       pid_params_right.out_max);
   
     // 设置电机速度
-    Motor_Set_Speed(&left_motor, output_left);
-    Motor_Set_Speed(&right_motor, output_right);
+    Motor_Set_Speed(&left_motor, 680+output_left);
+    Motor_Set_Speed(&right_motor, 680+output_right);
 }

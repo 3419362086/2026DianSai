@@ -329,11 +329,13 @@ void Uart5_Task(void)
   if(pid_running != 0U)
   {
     Uart_Printf(wireless_UART,
-                "%.2f,%.2f,%.2f,%.2f\r\n",
+                "%.2f,%.2f,%d,%.2f,%.2f,%d\r\n",
                 pid_speed_left.target,
                 left_encoder.rpm,
+                left_motor.speed,
                 pid_speed_right.target,
-                right_encoder.rpm);
+                right_encoder.rpm,
+                right_motor.speed);
   }
 }
 
