@@ -472,8 +472,8 @@ void Show_Page_1_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input)
 {
     /* USER CODE BEGIN */
 
-    Oled_Printf(0, 1, 16, "%d-%d-%d-%d-%d-%d-%d-%d",(gray_digtal>>0)&0x01,(gray_digtal>>1)&0x01,(gray_digtal>>2)&0x01,(gray_digtal>>3)&0x01,
-                                                    (gray_digtal>>4)&0x01,(gray_digtal>>5)&0x01,(gray_digtal>>6)&0x01,(gray_digtal>>7)&0x01);
+    Oled_Printf(0, 1, 16, "%d-%d-%d-%d-%d-%d-%d-%d", gray_digtal[0], gray_digtal[1], gray_digtal[2], gray_digtal[3],
+                                                       gray_digtal[4], gray_digtal[5], gray_digtal[6], gray_digtal[7]);
 
     /* USER CODE END */
 }

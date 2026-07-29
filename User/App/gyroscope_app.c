@@ -15,58 +15,58 @@ void Gyroscope_Init(void)
 {
   Uart_Printf(DEBUG_UART, "ICM20608 Gyroscope_Init ......\r\n");
   
-  // ³õÊ¼»¯ICM20608???
+  // ï¿½ï¿½Ê¼ï¿½ï¿½ICM20608???
   ICM206xx_Init();
   
-  // ³õÊ¼»¯Çý¶¯³ÌÐò
+  // ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
   Gyroscope_Driver_Init();
   
-  // ¿ªÊ¼Ð£×¼
+  // ï¿½ï¿½Ê¼Ð£×¼
   Gyroscope_Calibrate_Start();
 }
 
 void Gyroscope_Task(void)
 {
   uint32_t current_time = HAL_GetTick();
-  float dt = (current_time - last_gyro_time) / 1000.0f;  // ×ª»»ÎªÃë
+  float dt = (current_time - last_gyro_time) / 1000.0f;  // ×ªï¿½ï¿½Îªï¿½ï¿½
   
-  // ³õÊ¼»¯Ê±¼ä
+  // ï¿½ï¿½Ê¼ï¿½ï¿½Ê±ï¿½ï¿½
   if (last_gyro_time == 0) {
     last_gyro_time = current_time;
     return;
   }
   
-  // ÏÞÖÆÊ±¼ä¼ä¸ô·¶Î§
-  if (dt > 0.1f) dt = 0.01f;  // ×î´ó100ms£¬·ÀÖ¹Òì³£
-  if (dt < 0.001f) return;    // ×îÐ¡1ms£¬±ÜÃâ¹ýÓÚÆµ·±
+  // ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î§
+  if (dt > 0.1f) dt = 0.01f;  // ï¿½ï¿½ï¿½100msï¿½ï¿½ï¿½ï¿½Ö¹ï¿½ì³£
+  if (dt < 0.001f) return;    // ï¿½ï¿½Ð¡1msï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµï¿½ï¿½
   
-  // ¶ÁÈ¡Ô­Ê¼Êý¾Ý
+  // ï¿½ï¿½È¡Ô­Ê¼ï¿½ï¿½ï¿½ï¿½
   ICM206xx_Read_Data(&icm20608.gyro, &icm20608.accel, &icm20608.temperature);
   
-  // ¾²Ì¬±äÁ¿¼ÇÂ¼ÉÏ´ÎÐ£×¼×´Ì¬
+  // ï¿½ï¿½Ì¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼ï¿½Ï´ï¿½Ð£×¼×´Ì¬
   static uint8_t was_calibrating = 0;
   
-  // ¼ì²éÐ£×¼×´Ì¬±ä»¯
+  // ï¿½ï¿½ï¿½Ð£×¼×´Ì¬ï¿½ä»¯
   if (was_calibrating && !gyro_calibration.is_calibrating && euler_angles.calibrated) {
-    // Ð£×¼¸ÕÍê³É£¬³õÊ¼»¯×ËÌ¬
+    // Ð£×¼ï¿½ï¿½ï¿½ï¿½É£ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Ì¬
     Gyroscope_Initialize_Attitude(&icm20608.accel);
   }
   was_calibrating = gyro_calibration.is_calibrating;
   
-  // ¸üÐÂÅ·À­½Ç½âËã
+  // ï¿½ï¿½ï¿½ï¿½Å·ï¿½ï¿½ï¿½Ç½ï¿½ï¿½ï¿½
   Gyroscope_Update_Euler(&icm20608.gyro, &icm20608.accel, dt);
   
-  // »ñÈ¡½âËãºóµÄÅ·À­½Ç
+  // ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å·ï¿½ï¿½ï¿½ï¿½
   Gyroscope_Get_Euler_Angles(&icm20608.Roll,&icm20608.Pitch, &icm20608.Yaw);
   
-  // µÖÏû³õÊ¼µÄ -179
+  // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ -179
   if(icm20608.Roll < 0)
     icm20608.Roll = 180 + icm20608.Roll;
   else
     icm20608.Roll = icm20608.Roll - 180;
   
     
-  // ¼ÇÂ¼µÚÒ»¸öÓÐÐ§Å·À­½Ç
+  // ï¿½ï¿½Â¼ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½Ð§Å·ï¿½ï¿½ï¿½ï¿½
   if (!first_gyroscope_flag && euler_angles.calibrated) {
     frist_roll = icm20608.Roll;
     frist_pitch = icm20608.Pitch;
@@ -74,7 +74,7 @@ void Gyroscope_Task(void)
     first_gyroscope_flag = 1;
   }
   
-  Uart_Printf(DEBUG_UART,"Roll=%.2f Pitch=%.2f Yaw=%.2f\r\n",icm20608.Roll,icm20608.Pitch,icm20608.Yaw);  
+  // Uart_Printf(DEBUG_UART,"Roll=%.2f Pitch=%.2f Yaw=%.2f\r\n",icm20608.Roll,icm20608.Pitch,icm20608.Yaw);  
 
   last_gyro_time = current_time;
 }
@@ -88,13 +88,13 @@ void Gyroscope_Init(void)
   Uart_Printf(DEBUG_UART, "BNO08x Gyroscope_Init ......\r\n");
 
   if (BNO080_HardwareReset() == 0) {
-      Uart_Printf(DEBUG_UART, "BNO080Ó²¼þ¸´Î»³É¹¦\n");
+      Uart_Printf(DEBUG_UART, "BNO080Ó²ï¿½ï¿½ï¿½ï¿½Î»ï¿½É¹ï¿½\n");
   } else {
-      Uart_Printf(DEBUG_UART, "BNO080Ó²¼þ¸´Î»Ê§°Ü£¬³¢ÊÔÈí¼þ¸´Î»\n");
-      // ±¸ÓÃ·½°¸£ºÈí¼þ¸´Î»
+      Uart_Printf(DEBUG_UART, "BNO080Ó²ï¿½ï¿½ï¿½ï¿½Î»Ê§ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î»\n");
+      // ï¿½ï¿½ï¿½Ã·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î»
       softReset();
       HAL_Delay(100);
-      Uart_Printf(DEBUG_UART, "BNO080Èí¼þ¸´Î»Íê³É\n");
+      Uart_Printf(DEBUG_UART, "BNO080ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½\n");
   }
   
   enableRotationVector(100);
@@ -135,7 +135,7 @@ void Gyroscope_Init(void)
     }
   }
     
-  /* ½«µ±Ç°Î»ÖÃ¹éÁã */
+  /* ï¿½ï¿½ï¿½ï¿½Ç°Î»ï¿½Ã¹ï¿½ï¿½ï¿½ */
   if(first_gyroscope_flag == 0)
   {
     first_gyroscope_flag = 1;

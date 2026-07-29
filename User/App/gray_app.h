@@ -8,8 +8,6 @@
 void Gray_Init(void);
 void Gray_Task(void);
 
-extern unsigned char gray_digtal; // 灰度传感器开关量
-
-extern uint8_t gray_analog[GRAY_CHANNEL_COUNT];
+extern uint8_t gray_digtal[GRAY_CHANNEL_COUNT]; // 灰度传感器开关量
 
 #endif

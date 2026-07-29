@@ -1,7 +1,7 @@
 #ifndef __MYDEFINE_H__
 #define __MYDEFINE_H__
 
-/* ========== HAL ¿âÍ·ÎÄ¼þ ========== */
+/* ========== HAL ï¿½ï¿½Í·ï¿½Ä¼ï¿½ ========== */
 #include "main.h"
 #include "gpio.h"
 #include "dma.h"
@@ -11,20 +11,18 @@
 #include "tim.h"
 #include "usart.h"
 
-/* ========== C ÓïÑÔÍ·ÎÄ¼þ ========== */
+/* ========== C ï¿½ï¿½ï¿½ï¿½Í·ï¿½Ä¼ï¿½ ========== */
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 #include <math.h>
 
-/* ========== ×é¼þ¿âÍ·ÎÄ¼þ ========== */
+/* ========== ï¿½ï¿½ï¿½ï¿½ï¿½Í·ï¿½Ä¼ï¿? ========== */
 #include "ebtn.h"
 
 #include "ringbuffer.h"
 
 #include "oled.h"
-
-#include "hardware_iic.h"
 
 #include "icm20608.h"
 
@@ -42,7 +40,7 @@
 
 #include "pstwo.h"
 
-/* ========== Çý¶¯¿âÍ·ÎÄ¼þ ========== */
+/* ========== ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í·ï¿½Ä¼ï¿½ ========== */
 #include "led_driver.h"
 #include "key_driver.h"
 #include "uart_driver.h"
@@ -51,8 +49,9 @@
 #include "encoder_driver.h"
 #include "gyroscope_driver.h"
 #include "zdt_motor_driver.h"
+#include "gray_driver.h"
 
-/* ========== Ó¦ÓÃ²ãÍ·ÎÄ¼þ ========== */
+/* ========== Ó¦ï¿½Ã²ï¿½Í·ï¿½Ä¼ï¿½ ========== */
 #include "led_app.h"
 #include "key_app.h"
 #include "uart_app.h"
@@ -67,7 +66,7 @@
 #include "flash_app.h"
 #include "rtc_app.h"
 
-/* ========== ºËÐÄµ÷¶ÈÆ÷Í·ÎÄ¼þ ========== */
+/* ========== ï¿½ï¿½ï¿½Äµï¿½ï¿½ï¿½ï¿½ï¿½Í·ï¿½Ä¼ï¿½ ========== */
 #include "Scheduler.h"
 #include "Scheduler_Task.h"
 
