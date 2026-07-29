@@ -326,12 +326,15 @@ void Uart5_Task(void)
     memset(uart5_data_buffer, 0, uart_data_len);
   }
 
-  Uart_Printf(wireless_UART,
-              "RPM target_left=%.2f actual_left=%.2f target_right=%.2f actual_right=%.2f\r\n",
-              pid_speed_left.target,
-              left_encoder.rpm,
-              pid_speed_right.target,
-              right_encoder.rpm);
+  if(pid_running != 0U)
+  {
+    Uart_Printf(wireless_UART,
+                "%.2f,%.2f,%.2f,%.2f\r\n",
+                pid_speed_left.target,
+                left_encoder.rpm,
+                pid_speed_right.target,
+                right_encoder.rpm);
+  }
 }
 
 /* 串口 6 */

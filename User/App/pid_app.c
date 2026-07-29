@@ -1,7 +1,7 @@
 #include "pid_app.h"
 #include "Easy_Menu_User.h"
 
-int basic_speed = 400; // 基础速度（单位：rpm）
+int basic_speed = 120; // 基础速度（单位：rpm）
 
 /* PID 控制器实例 */
 PID_T pid_speed_left;  // 左轮速度环
