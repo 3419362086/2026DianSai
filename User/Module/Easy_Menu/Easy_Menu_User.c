@@ -235,7 +235,8 @@ void Ordinary_Page_4_3_Item_Callback(char *str)
 void Ordinary_Page_5_1_Item_Callback(void *data) // *((signed int*)data)
 {
     /* USER CODE BEGIN */
-    pid_set_target(&pid_speed_left, *((signed int*)data));
+    target_speed_left = *((signed int*)data);
+    pid_set_target(&pid_speed_left, target_speed_left);
     /* USER CODE END */
 }
 
@@ -266,7 +267,8 @@ void Ordinary_Page_5_4_Item_Callback(void *data) // *((float*)data)
 void Ordinary_Page_6_1_Item_Callback(void *data) // *((signed int*)data)
 {
     /* USER CODE BEGIN */
-    pid_set_target(&pid_speed_right, *((signed int*)data));
+    target_speed_right = *((signed int*)data);
+    pid_set_target(&pid_speed_right, target_speed_right);
     /* USER CODE END */
 }
 
@@ -369,6 +371,8 @@ static void Vehicle_Run_Start(void)
     Motor_Stop(&right_motor);
     pid_reset(&pid_speed_left);
     pid_reset(&pid_speed_right);
+    pid_reset(&pid_angle);
+    pid_reset(&pid_line);
     vehicle_run_start_tick = HAL_GetTick();
     pid_running = 1;
     if(interrupt_state == 0U)
@@ -389,6 +393,8 @@ static void Vehicle_Run_Reset(void)
     pid_running = 0;
     pid_reset(&pid_speed_left);
     pid_reset(&pid_speed_right);
+    pid_reset(&pid_angle);
+    pid_reset(&pid_line);
     Motor_Stop(&left_motor);
     Motor_Stop(&right_motor);
     vehicle_run_start_tick = 0;

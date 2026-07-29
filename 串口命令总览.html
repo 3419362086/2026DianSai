@@ -278,7 +278,7 @@
                 <span class="chip">接口：UART5 / wireless_UART</span>
                 <span class="chip">调度周期：10 ms</span>
                 <span class="chip">命令结束：\r 或 \n</span>
-                <span class="chip">当前命令：4 条</span>
+                <span class="chip">当前命令：5 条</span>
             </div>
         </section>
 
@@ -305,9 +305,10 @@
             <nav class="toc" aria-label="页面目录">
                 <a href="#pid">01. PID 参数命令</a>
                 <a href="#rpm">02. 目标 RPM 命令</a>
-                <a href="#response">03. 回显与错误</a>
-                <a href="#telemetry">04. 波形遥测协议</a>
-                <a href="#extension">05. 后续扩展</a>
+                <a href="#pwm">03. 电机 PWM 测试命令</a>
+                <a href="#response">04. 回显与错误</a>
+                <a href="#telemetry">05. 波形遥测协议</a>
+                <a href="#extension">06. 后续扩展</a>
             </nav>
         </section>
 
@@ -384,9 +385,32 @@ set_pid_speed_left(1.5,0.01,0.2,-500,800)
 set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></pre>
         </section>
 
+        <section class="section" id="pwm">
+            <div class="section-header">
+                <h2>03. 电机 PWM 测试命令</h2>
+                <span class="count">1 条命令</span>
+            </div>
+            <p class="section-intro">直接设置左右电机 PWM，用于测量不同 PWM 下的轮速。第一个参数为左电机，第二个参数为右电机。</p>
+            <table>
+                <thead>
+                    <tr><th class="num">序号</th><th>命令</th><th>使用示例</th><th>作用</th><th>回显</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="num" data-label="序号">1</td>
+                        <td data-label="命令"><code>set_motor_pwm(left_pwm,right_pwm)</code></td>
+                        <td data-label="使用示例"><code>set_motor_pwm(650,670)</code></td>
+                        <td data-label="作用">关闭 PID 控制，并通过 <code>Motor_Set_Speed()</code> 直接设置左右电机。</td>
+                        <td data-label="回显"><code>PWM OK: requested_left=650 requested_right=670 applied_left=650 applied_right=670</code></td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="note">当前 TIM1 周期对应范围为 <code>-999~999</code>，负数表示反转。该命令保留电机死区补偿，因此输入绝对值为 <code>1~574</code> 时，实际输出绝对值会变为 <code>575</code>；回显中的 <code>applied</code> 是补偿后的实际 PWM。发送 <code>set_motor_pwm(0,0)</code> 可停止两侧电机，恢复 PID 需通过现有 OLED 启动操作。</div>
+        </section>
+
         <section class="section" id="response">
             <div class="section-header">
-                <h2>03. 回显与错误</h2>
+                <h2>04. 回显与错误</h2>
                 <span class="count">统一回显</span>
             </div>
             <p class="section-intro">每条非空命令都会通过 UART5 返回处理结果，便于上位机确认参数是否真正应用。</p>
@@ -401,13 +425,15 @@ set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></pre>
                     <tr><td class="num" data-label="序号">4</td><td data-label="场景">上下限错误</td><td data-label="回显示例"><code>PID ERROR: require out_min&lt;=out_max and out_max&gt;=0</code></td><td data-label="含义">输出范围不满足当前代码校验条件。</td></tr>
                     <tr><td class="num" data-label="序号">5</td><td data-label="场景">命令行过长</td><td data-label="回显示例"><code>ERROR: command line too long</code></td><td data-label="含义">当前行超过串口命令缓存容量，整行不会执行。</td></tr>
                     <tr><td class="num" data-label="序号">6</td><td data-label="场景">RPM 格式错误</td><td data-label="回显示例"><code>RPM ERROR: left format, expected 1 integer</code></td><td data-label="含义">目标 RPM 命令没有提供一个有效整数，或缺少右括号。</td></tr>
+                    <tr><td class="num" data-label="序号">7</td><td data-label="场景">PWM 格式错误</td><td data-label="回显示例"><code>PWM ERROR: format, expected 2 integers</code></td><td data-label="含义">PWM 命令没有提供两个有效整数，或缺少右括号。</td></tr>
+                    <tr><td class="num" data-label="序号">8</td><td data-label="场景">PWM 超出范围</td><td data-label="回显示例"><code>PWM ERROR: left range=-999..999, right range=-999..999</code></td><td data-label="含义">至少一个 PWM 参数超出对应电机定时器允许的范围，电机输出不会改变。</td></tr>
                 </tbody>
             </table>
         </section>
 
         <section class="section" id="telemetry">
             <div class="section-header">
-                <h2>04. 波形遥测协议</h2>
+                <h2>05. 波形遥测协议</h2>
                 <span class="count">CSV / 100 Hz</span>
             </div>
             <p class="section-intro">在“小车启动计时”界面按键 1 启动后，UART5 每 10 ms 输出一行四列纯数值 CSV；按键 2 复位/暂停后停止输出。</p>
@@ -428,7 +454,7 @@ set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></pre>
 
         <section class="section" id="extension">
             <div class="section-header">
-                <h2>05. 后续扩展</h2>
+                <h2>06. 后续扩展</h2>
                 <span class="count">命令表结构</span>
             </div>
             <p class="section-intro">新增 UART5 命令时，不需要修改多行组包逻辑，只需增加处理函数并注册命令表项。</p>
@@ -438,7 +464,7 @@ set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></pre>
   {"set_pid_speed_right", Uart5_Handle_SetPid, &amp;uart5_pid_right_context},
   {"set_target_rpm_left", Uart5_Handle_SetTargetRpm, &amp;uart5_pid_left_context},
   {"set_target_rpm_right", Uart5_Handle_SetTargetRpm, &amp;uart5_pid_right_context},
-  /* 新命令在这里增加一项 */
+  {"set_motor_pwm", Uart5_Handle_SetMotorPwm, NULL},
 };</code></pre>
             <div class="note">命令表位于 <code>User/App/uart_app.c</code>，UART5 任务由 <code>User/Scheduler.c</code> 按 10 ms 调度。新增命令后需要同步更新本页。</div>
         </section>

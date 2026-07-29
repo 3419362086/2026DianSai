@@ -1,11 +1,26 @@
 #include "pid_app.h"
 #include "Easy_Menu_User.h"
 
+/*
+ * 根据 12 组正转实测数据做最小二乘拟合：
+ * 左轮 40~151 rpm、右轮 45~156 rpm，对应 PWM 均为 575~685。
+ * 公式为 base_pwm = slope * |target_rpm| + intercept，左右轮分别拟合，
+ * 用于补偿同一 PWM 下左右轮转速不一致；速度 PID 只修正剩余误差。
+ */
+#define LEFT_BASE_PWM_SLOPE       0.9812202f
+#define LEFT_BASE_PWM_INTERCEPT   537.11115f
+#define RIGHT_BASE_PWM_SLOPE      0.9850767f
+#define RIGHT_BASE_PWM_INTERCEPT  531.65649f
+
 int basic_speed = 150; // 基础速度（单位：rpm）
+volatile int target_speed_left;
+volatile int target_speed_right;
 
 /* PID 控制器实例 */
 PID_T pid_speed_left;  // 左轮速度环
 PID_T pid_speed_right; // 右轮速度环
+PID_T pid_angle;       // 角速度环，输出轮速差（rpm）
+PID_T pid_line;        // 循迹外环，输出目标角速度（deg/s）
 
 /* PID 参数定义 */
 PidParams_t pid_params_left = {
@@ -24,6 +39,48 @@ PidParams_t pid_params_right = {
     .out_max = 999.0f,
 };
 
+/* 外环初值仅用于建立控制链路，需结合实车单位和响应继续调参。 */
+PidParams_t pid_params_angle = {
+    .kp = 1.0f,
+    .ki = 0.0f,
+    .kd = 0.0f,
+    .out_min = -100.0f,
+    .out_max = 100.0f,
+};
+
+PidParams_t pid_params_line = {
+    .kp = 5.0f,
+    .ki = 0.0f,
+    .kd = 0.0f,
+    .out_min = -100.0f,
+    .out_max = 100.0f,
+};
+
+/*
+ * 零转速必须直接返回 0，避免拟合截距在停车目标下仍驱动电机。
+ * 超出实测转速范围时公式属于外推，因此最终按对应定时器周期限幅。
+ * 当前没有反转实测数据，负目标暂时复用正转曲线并改变输出符号。
+ */
+static int PID_Calculate_BasePwm(float target_rpm,
+                                 float slope,
+                                 float intercept,
+                                 int pwm_limit)
+{
+    float absolute_target_rpm;
+    float base_pwm;
+    int rounded_pwm;
+
+    if(target_rpm == 0.0f) return 0;
+
+    absolute_target_rpm = target_rpm > 0.0f ? target_rpm : -target_rpm;
+    base_pwm = slope * absolute_target_rpm + intercept;
+    base_pwm = pid_constrain(base_pwm, 0.0f, (float)pwm_limit);
+    rounded_pwm = (int)(base_pwm + 0.5f);
+
+    /* 当前只有正转实测数据，反转暂时复用同一拟合曲线并改变符号。 */
+    return target_rpm > 0.0f ? rounded_pwm : -rounded_pwm;
+}
+
 void PID_Init(void)
 {
     pid_init(&pid_speed_left,
@@ -33,10 +90,20 @@ void PID_Init(void)
     pid_init(&pid_speed_right,
             pid_params_right.kp, pid_params_right.ki, pid_params_right.kd,
             0.0f, pid_params_right.out_max);
+
+    pid_init(&pid_angle,
+            pid_params_angle.kp, pid_params_angle.ki, pid_params_angle.kd,
+            0.0f, pid_params_angle.out_max);
+
+    pid_init(&pid_line,
+            pid_params_line.kp, pid_params_line.ki, pid_params_line.kd,
+            0.0f, pid_params_line.out_max);
     
     
-    pid_set_target(&pid_speed_left, basic_speed);
-    pid_set_target(&pid_speed_right, basic_speed);
+    target_speed_left = basic_speed;
+    target_speed_right = basic_speed;
+    pid_set_target(&pid_speed_left, target_speed_left);
+    pid_set_target(&pid_speed_right, target_speed_right);
 
     Easy_Menu_Ui_Data.left_target = basic_speed;
     Easy_Menu_Ui_Data.left_kp = pid_params_left.kp;
@@ -54,12 +121,49 @@ void PID_Task(void)
 {
     if(pid_running == 0) return;
     
+    float target_yaw_rate;
+    float wheel_speed_diff;
+    float current_yaw_rate;
+    float left_target_rpm;
+    float right_target_rpm;
     float output_left_float;
     float output_right_float;
+    int left_base_pwm;
+    int right_base_pwm;
     int output_left;
     int output_right;
   
-    // 使用位置式 PID 计算利用速度环计算输出
+    /*
+     * 级联控制：循迹误差为正表示车辆偏右，因此循迹环输出负的目标角速度
+     * 进行左转纠偏。角速度反馈统一为右转为正，并扣除已完成的静态偏置。
+     */
+    target_yaw_rate = pid_calculate_positional(&pid_line, g_line_position_error);
+    pid_set_target(&pid_angle, target_yaw_rate);
+    current_yaw_rate = icm20608.gyro.z - euler_angles.gz_bias;
+    wheel_speed_diff = pid_calculate_positional(&pid_angle, current_yaw_rate);
+    // Uart_Printf(DEBUG_UART, "Target Yaw Rate: %.2f, Wheel Speed Diff: %.2f, Current Yaw Rate: %.2f\r\n",
+    //         target_yaw_rate, wheel_speed_diff, current_yaw_rate);
+
+    /* 右转为正：左轮加速、右轮减速，轮速差单位为 rpm。 */
+    left_target_rpm = (float)target_speed_left + wheel_speed_diff;
+    right_target_rpm = (float)target_speed_right - wheel_speed_diff;
+    pid_set_target(&pid_speed_left, left_target_rpm);
+    pid_set_target(&pid_speed_right, right_target_rpm);
+
+    /*
+     * 使用叠加轮速差后的最终左右轮目标计算前馈，使转向时两侧基础 PWM
+     * 能分别跟随各自目标转速变化，再由速度 PID 修正剩余误差。
+     */
+    left_base_pwm = PID_Calculate_BasePwm(left_target_rpm,
+                                          LEFT_BASE_PWM_SLOPE,
+                                          LEFT_BASE_PWM_INTERCEPT,
+                                          (int)left_motor.config.in1.htim->Init.Period);
+    right_base_pwm = PID_Calculate_BasePwm(right_target_rpm,
+                                           RIGHT_BASE_PWM_SLOPE,
+                                           RIGHT_BASE_PWM_INTERCEPT,
+                                           (int)right_motor.config.in1.htim->Init.Period);
+
+    // 使用位置式 PID 计算左右轮速度环输出
     output_left_float = pid_calculate_positional(&pid_speed_left, left_encoder.rpm);
     output_right_float = pid_calculate_positional(&pid_speed_right, right_encoder.rpm);
 
@@ -72,6 +176,6 @@ void PID_Task(void)
                                       pid_params_right.out_max);
   
     // 设置电机速度
-    Motor_Set_Speed(&left_motor, 680+output_left);
-    Motor_Set_Speed(&right_motor, 680+output_right);
+    Motor_Set_Speed(&left_motor, left_base_pwm + output_left);
+    Motor_Set_Speed(&right_motor, right_base_pwm + output_right);
 }

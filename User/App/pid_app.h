@@ -22,9 +22,12 @@ extern PidParams_t pid_params_right;
 extern volatile unsigned char pid_running; // PID 控制使能开关
 
 extern int basic_speed;
+extern volatile int target_speed_left;  // 左轮基础目标速度（rpm）
+extern volatile int target_speed_right; // 右轮基础目标速度（rpm）
 
 extern PID_T pid_speed_left;  // 左轮速度环
 extern PID_T pid_speed_right; // 右轮速度环
-
+extern PID_T pid_angle;       // 角速度环，输出轮速差（rpm）
+extern PID_T pid_line;        // 循迹外环，输出目标角速度（deg/s）
 
 #endif

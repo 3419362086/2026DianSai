@@ -142,6 +142,14 @@ static void Uart5_Handle_SetTargetRpm(const char *line,
   }
 
   pid_set_target(pid_context->pid, (float)target_rpm);
+  if (pid_context->pid == &pid_speed_left)
+  {
+    target_speed_left = target_rpm;
+  }
+  else if (pid_context->pid == &pid_speed_right)
+  {
+    target_speed_right = target_rpm;
+  }
   *pid_context->ui_target = target_rpm;
   Easy_Menu_Display_Refresh();
 
@@ -150,12 +158,72 @@ static void Uart5_Handle_SetTargetRpm(const char *line,
               line, pid_context->wheel_name, target_rpm);
 }
 
+static void Uart5_Handle_SetMotorPwm(const char *line,
+                                     const char *arguments,
+                                     const void *context)
+{
+  char *tail;
+  int left_pwm;
+  int right_pwm;
+  int left_pwm_limit;
+  int right_pwm_limit;
+  int consumed = 0;
+  int parsed_count;
+
+  (void)context;
+
+  parsed_count = sscanf(arguments, "%d,%d)%n", &left_pwm, &right_pwm, &consumed);
+  if (parsed_count != 2 || consumed <= 0)
+  {
+    Uart_Printf(wireless_UART,
+                "RX:%s\r\nPWM ERROR: format, expected 2 integers\r\n",
+                line);
+    return;
+  }
+
+  tail = (char *)arguments + consumed;
+  while (*tail == ' ' || *tail == '\t') tail++;
+  if (*tail == ';')
+  {
+    tail++;
+    while (*tail == ' ' || *tail == '\t') tail++;
+  }
+  if (*tail != '\0')
+  {
+    Uart_Printf(wireless_UART, "RX:%s\r\nPWM ERROR: trailing characters\r\n", line);
+    return;
+  }
+
+  left_pwm_limit = (int)left_motor.config.in1.htim->Init.Period;
+  right_pwm_limit = (int)right_motor.config.in1.htim->Init.Period;
+  if (left_pwm < -left_pwm_limit || left_pwm > left_pwm_limit ||
+      right_pwm < -right_pwm_limit || right_pwm > right_pwm_limit)
+  {
+    Uart_Printf(wireless_UART,
+                "RX:%s\r\nPWM ERROR: left range=%d..%d, right range=%d..%d\r\n",
+                line,
+                -left_pwm_limit, left_pwm_limit,
+                -right_pwm_limit, right_pwm_limit);
+    return;
+  }
+
+  /* 手动 PWM 测试必须先关闭闭环，防止 10 ms PID 任务覆盖电机输出。 */
+  pid_running = 0U;
+  Motor_Set_Speed(&left_motor, left_pwm);
+  Motor_Set_Speed(&right_motor, right_pwm);
+
+  Uart_Printf(wireless_UART,
+              "RX:%s\r\nPWM OK: requested_left=%d requested_right=%d applied_left=%d applied_right=%d\r\n",
+              line, left_pwm, right_pwm, left_motor.speed, right_motor.speed);
+}
+
 static const Uart5_CommandEntry_t uart5_command_table[] =
 {
   {"set_pid_speed_left", Uart5_Handle_SetPid, &uart5_pid_left_context},
   {"set_pid_speed_right", Uart5_Handle_SetPid, &uart5_pid_right_context},
   {"set_target_rpm_left", Uart5_Handle_SetTargetRpm, &uart5_pid_left_context},
   {"set_target_rpm_right", Uart5_Handle_SetTargetRpm, &uart5_pid_right_context},
+  {"set_motor_pwm", Uart5_Handle_SetMotorPwm, NULL},
 };
 
 static void Uart5_Dispatch_Command(char *line)
@@ -328,14 +396,16 @@ void Uart5_Task(void)
 
   if(pid_running != 0U)
   {
-    Uart_Printf(wireless_UART,
-                "%.2f,%.2f,%d,%.2f,%.2f,%d\r\n",
-                pid_speed_left.target,
-                left_encoder.rpm,
-                left_motor.speed,
-                pid_speed_right.target,
-                right_encoder.rpm,
-                right_motor.speed);
+    /*速度环*/
+    // Uart_Printf(wireless_UART,
+    //             "%.2f,%.2f,%d,%.2f,%.2f,%d\r\n",
+    //             pid_speed_left.target,
+    //             left_encoder.rpm,
+    //             left_motor.speed,
+    //             pid_speed_right.target,
+    //             right_encoder.rpm,
+    //             right_motor.speed);
+    /*位置环*/
   }
 }
 

@@ -37,8 +37,8 @@ void Gyroscope_Task(void)
   }
   
   // ����ʱ������Χ
-  if (dt > 0.1f) dt = 0.01f;  // ���100ms����ֹ�쳣
-  if (dt < 0.001f) return;    // ��С1ms���������Ƶ��
+  if (dt > 0.1f) dt = 0.01f;  // ���?100ms����ֹ�쳣
+  if (dt < 0.001f) return;    // ��С1ms���������Ƶ��?
   
   // ��ȡԭʼ����
   ICM206xx_Read_Data(&icm20608.gyro, &icm20608.accel, &icm20608.temperature);
@@ -46,9 +46,9 @@ void Gyroscope_Task(void)
   // ��̬������¼�ϴ�У׼״̬
   static uint8_t was_calibrating = 0;
   
-  // ���У׼״̬�仯
+  // ���У׼״�?�仯
   if (was_calibrating && !gyro_calibration.is_calibrating && euler_angles.calibrated) {
-    // У׼����ɣ���ʼ����̬
+    // У׼����ɣ���ʼ�����?
     Gyroscope_Initialize_Attitude(&icm20608.accel);
   }
   was_calibrating = gyro_calibration.is_calibrating;
@@ -64,6 +64,10 @@ void Gyroscope_Task(void)
     icm20608.Roll = 180 + icm20608.Roll;
   else
     icm20608.Roll = icm20608.Roll - 180;
+
+  // 统一车体方向约定：左�?/左转为负，右�?/右转为�?��?
+  icm20608.Roll = -icm20608.Roll;
+  icm20608.Yaw = -icm20608.Yaw;
   
     
   // ��¼��һ����Чŷ����
@@ -73,8 +77,11 @@ void Gyroscope_Task(void)
     frist_yaw = icm20608.Yaw;
     first_gyroscope_flag = 1;
   }
-  
-  // Uart_Printf(DEBUG_UART,"Roll=%.2f Pitch=%.2f Yaw=%.2f\r\n",icm20608.Roll,icm20608.Pitch,icm20608.Yaw);  
+
+  // Uart_Printf(DEBUG_UART, "Roll=%.2f Pitch=%.2f Yaw=%.2f\r\n",
+  //             icm20608.Roll, icm20608.Pitch, icm20608.Yaw);
+  // Uart_Printf(DEBUG_UART, "GyroX=%.3fdeg/s GyroY=%.3fdeg/s GyroZ=%.3fdeg/s\r\n",
+  //             icm20608.gyro.x, icm20608.gyro.y, icm20608.gyro.z);
 
   last_gyro_time = current_time;
 }
