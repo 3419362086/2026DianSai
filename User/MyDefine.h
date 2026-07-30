@@ -61,6 +61,7 @@
 #include "encoder_app.h"
 #include "gyroscope_app.h"
 #include "pid_app.h"
+#include "vehicle_run_app.h"
 #include "zdt_motor_app.h"
 #include "aht20_app.h"
 #include "flash_app.h"

@@ -52,8 +52,8 @@ PidParams_t pid_params_angle = {
     .kp = 10.0f,
     .ki = 0.075f,
     .kd = 1.0f,
-    .out_min = -65.0f,
-    .out_max = 65.0f,
+    .out_min = -70.0f,
+    .out_max = 70.0f,
 };
 
 PidParams_t pid_params_line = {
