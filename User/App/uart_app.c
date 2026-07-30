@@ -23,9 +23,32 @@ typedef struct
   signed int *ui_target;
 } Uart5_PidCommandContext_t;
 
+#define UART5_PWM_MEASURE_SETTLE_MS 2000U
+#define UART5_PWM_MEASURE_SAMPLE_MS 2000U
+
+typedef enum
+{
+  UART5_PWM_MEASURE_IDLE = 0,
+  UART5_PWM_MEASURE_SETTLING,
+  UART5_PWM_MEASURE_SAMPLING
+} Uart5_PwmMeasureState_t;
+
+typedef struct
+{
+  Uart5_PwmMeasureState_t state;
+  uint32_t phase_started_ms;
+  int requested_left_pwm;
+  int requested_right_pwm;
+  int applied_left_pwm;
+  int applied_right_pwm;
+  int32_t left_start_count;
+  int32_t right_start_count;
+} Uart5_PwmMeasure_t;
+
 static char uart5_command_line[BUFFER_SIZE];
 static uint16_t uart5_command_line_length;
 static uint8_t uart5_command_line_overflow;
+static Uart5_PwmMeasure_t uart5_pwm_measure;
 
 static const Uart5_PidCommandContext_t uart5_pid_left_context =
 {
@@ -56,6 +79,88 @@ static const Uart5_PidCommandContext_t uart5_pid_line_context =
   "line", &pid_params_line, &pid_line,
   NULL, NULL, NULL, NULL
 };
+
+static void Uart5_Read_Encoder_Total_Counts(int32_t *left_count,
+                                            int32_t *right_count)
+{
+  uint32_t interrupt_state = __get_PRIMASK();
+
+  /* Encoder_Task 在 10 ms 中断中依次更新两侧累计计数，快照必须来自同一周期。 */
+  __disable_irq();
+  *left_count = left_encoder.total_count;
+  *right_count = right_encoder.total_count;
+  if (interrupt_state == 0U)
+  {
+    __enable_irq();
+  }
+}
+
+static void Uart5_Pwm_Measure_Task(void)
+{
+  uint32_t now_ms;
+  uint32_t elapsed_ms;
+  int32_t left_end_count;
+  int32_t right_end_count;
+  int32_t left_delta_count;
+  int32_t right_delta_count;
+  float left_average_rpm;
+  float right_average_rpm;
+
+  if (uart5_pwm_measure.state == UART5_PWM_MEASURE_IDLE) return;
+
+  if (pid_running != 0U)
+  {
+    uart5_pwm_measure.state = UART5_PWM_MEASURE_IDLE;
+    Uart_Printf(wireless_UART, "PWM MEASURE CANCELED: PID enabled\r\n");
+    return;
+  }
+
+  if ((left_motor.speed != uart5_pwm_measure.applied_left_pwm) ||
+      (right_motor.speed != uart5_pwm_measure.applied_right_pwm))
+  {
+    uart5_pwm_measure.state = UART5_PWM_MEASURE_IDLE;
+    Uart_Printf(wireless_UART, "PWM MEASURE CANCELED: motor output changed\r\n");
+    return;
+  }
+
+  now_ms = HAL_GetTick();
+  elapsed_ms = now_ms - uart5_pwm_measure.phase_started_ms;
+
+  if (uart5_pwm_measure.state == UART5_PWM_MEASURE_SETTLING)
+  {
+    if (elapsed_ms < UART5_PWM_MEASURE_SETTLE_MS) return;
+
+    Uart5_Read_Encoder_Total_Counts(&uart5_pwm_measure.left_start_count,
+                                    &uart5_pwm_measure.right_start_count);
+    uart5_pwm_measure.phase_started_ms = now_ms;
+    uart5_pwm_measure.state = UART5_PWM_MEASURE_SAMPLING;
+    return;
+  }
+
+  if (elapsed_ms < UART5_PWM_MEASURE_SAMPLE_MS) return;
+
+  Uart5_Read_Encoder_Total_Counts(&left_end_count, &right_end_count);
+  left_delta_count = left_end_count - uart5_pwm_measure.left_start_count;
+  right_delta_count = right_end_count - uart5_pwm_measure.right_start_count;
+  left_average_rpm = ((float)left_delta_count * 60000.0f) /
+                     ((float)ENCODER_PPR * (float)elapsed_ms);
+  right_average_rpm = ((float)right_delta_count * 60000.0f) /
+                      ((float)ENCODER_PPR * (float)elapsed_ms);
+
+  uart5_pwm_measure.state = UART5_PWM_MEASURE_IDLE;
+  Motor_Stop(&left_motor);
+  Motor_Stop(&right_motor);
+  Uart_Printf(wireless_UART,
+              "PWM MEASURE OK: requested_left=%d applied_left=%d avg_left_rpm=%.2f "
+              "requested_right=%d applied_right=%d avg_right_rpm=%.2f sample_ms=%lu\r\n",
+              uart5_pwm_measure.requested_left_pwm,
+              uart5_pwm_measure.applied_left_pwm,
+              left_average_rpm,
+              uart5_pwm_measure.requested_right_pwm,
+              uart5_pwm_measure.applied_right_pwm,
+              right_average_rpm,
+              (unsigned long)elapsed_ms);
+}
 
 static void Uart5_Handle_SetPid(const char *line,
                                 const char *arguments,
@@ -182,6 +287,62 @@ static void Uart5_Handle_SetTargetRpm(const char *line,
               line, pid_context->wheel_name, target_rpm);
 }
 
+static void Uart5_Handle_SetBasicRpm(const char *line,
+                                     const char *arguments,
+                                     const void *context)
+{
+  char *tail;
+  uint32_t interrupt_state;
+  int target_rpm;
+  int consumed = 0;
+  int parsed_count;
+
+  (void)context;
+
+  parsed_count = sscanf(arguments, "%d)%n", &target_rpm, &consumed);
+  if (parsed_count != 1 || consumed <= 0)
+  {
+    Uart_Printf(wireless_UART,
+                "RX:%s\r\nRPM ERROR: basic format, expected 1 integer\r\n",
+                line);
+    return;
+  }
+
+  tail = (char *)arguments + consumed;
+  while (*tail == ' ' || *tail == '\t') tail++;
+  if (*tail == ';')
+  {
+    tail++;
+    while (*tail == ' ' || *tail == '\t') tail++;
+  }
+  if (*tail != '\0')
+  {
+    Uart_Printf(wireless_UART, "RX:%s\r\nRPM ERROR: trailing characters\r\n", line);
+    return;
+  }
+
+  /* PID_Task 在中断中读取左右目标，三项基础速度状态必须整体更新。 */
+  interrupt_state = __get_PRIMASK();
+  __disable_irq();
+  basic_speed = target_rpm;
+  target_speed_left = target_rpm;
+  target_speed_right = target_rpm;
+  pid_set_target(&pid_speed_left, (float)target_rpm);
+  pid_set_target(&pid_speed_right, (float)target_rpm);
+  if (interrupt_state == 0U)
+  {
+    __enable_irq();
+  }
+
+  Easy_Menu_Ui_Data.left_target = target_rpm;
+  Easy_Menu_Ui_Data.right_target = target_rpm;
+  Easy_Menu_Display_Refresh();
+
+  Uart_Printf(wireless_UART,
+              "RX:%s\r\nRPM OK: basic target=%d\r\n",
+              line, target_rpm);
+}
+
 static void Uart5_Handle_SetMotorPwm(const char *line,
                                      const char *arguments,
                                      const void *context)
@@ -231,6 +392,12 @@ static void Uart5_Handle_SetMotorPwm(const char *line,
     return;
   }
 
+  if (uart5_pwm_measure.state != UART5_PWM_MEASURE_IDLE)
+  {
+    uart5_pwm_measure.state = UART5_PWM_MEASURE_IDLE;
+    Uart_Printf(wireless_UART, "PWM MEASURE CANCELED: manual PWM override\r\n");
+  }
+
   /* 手动 PWM 测试必须先关闭闭环，防止 10 ms PID 任务覆盖电机输出。 */
   pid_running = 0U;
   Motor_Set_Speed(&left_motor, left_pwm);
@@ -241,6 +408,86 @@ static void Uart5_Handle_SetMotorPwm(const char *line,
               line, left_pwm, right_pwm, left_motor.speed, right_motor.speed);
 }
 
+static void Uart5_Handle_MeasureMotorPwm(const char *line,
+                                         const char *arguments,
+                                         const void *context)
+{
+  char *tail;
+  int left_pwm;
+  int right_pwm;
+  int left_pwm_limit;
+  int right_pwm_limit;
+  int consumed = 0;
+  int parsed_count;
+
+  (void)context;
+
+  parsed_count = sscanf(arguments, "%d,%d)%n", &left_pwm, &right_pwm, &consumed);
+  if (parsed_count != 2 || consumed <= 0)
+  {
+    Uart_Printf(wireless_UART,
+                "RX:%s\r\nPWM MEASURE ERROR: format, expected 2 integers\r\n",
+                line);
+    return;
+  }
+
+  tail = (char *)arguments + consumed;
+  while (*tail == ' ' || *tail == '\t') tail++;
+  if (*tail == ';')
+  {
+    tail++;
+    while (*tail == ' ' || *tail == '\t') tail++;
+  }
+  if (*tail != '\0')
+  {
+    Uart_Printf(wireless_UART,
+                "RX:%s\r\nPWM MEASURE ERROR: trailing characters\r\n",
+                line);
+    return;
+  }
+
+  left_pwm_limit = (int)left_motor.config.in1.htim->Init.Period;
+  right_pwm_limit = (int)right_motor.config.in1.htim->Init.Period;
+  if (left_pwm < -left_pwm_limit || left_pwm > left_pwm_limit ||
+      right_pwm < -right_pwm_limit || right_pwm > right_pwm_limit)
+  {
+    Uart_Printf(wireless_UART,
+                "RX:%s\r\nPWM MEASURE ERROR: left range=%d..%d, right range=%d..%d\r\n",
+                line,
+                -left_pwm_limit, left_pwm_limit,
+                -right_pwm_limit, right_pwm_limit);
+    return;
+  }
+
+  if (uart5_pwm_measure.state != UART5_PWM_MEASURE_IDLE)
+  {
+    Uart_Printf(wireless_UART, "PWM MEASURE ERROR: busy\r\n");
+    return;
+  }
+
+  pid_running = 0U;
+  Motor_Set_Speed(&left_motor, left_pwm);
+  Motor_Set_Speed(&right_motor, right_pwm);
+
+  uart5_pwm_measure.requested_left_pwm = left_pwm;
+  uart5_pwm_measure.requested_right_pwm = right_pwm;
+  uart5_pwm_measure.applied_left_pwm = left_motor.speed;
+  uart5_pwm_measure.applied_right_pwm = right_motor.speed;
+  uart5_pwm_measure.phase_started_ms = HAL_GetTick();
+  uart5_pwm_measure.state = UART5_PWM_MEASURE_SETTLING;
+
+  Uart_Printf(wireless_UART,
+              "RX:%s\r\nPWM MEASURE START: requested_left=%d applied_left=%d "
+              "requested_right=%d applied_right=%d settle_ms=%lu sample_ms=%lu\r\n",
+              line,
+              uart5_pwm_measure.requested_left_pwm,
+              uart5_pwm_measure.applied_left_pwm,
+              uart5_pwm_measure.requested_right_pwm,
+              uart5_pwm_measure.applied_right_pwm,
+              (unsigned long)UART5_PWM_MEASURE_SETTLE_MS,
+              (unsigned long)UART5_PWM_MEASURE_SAMPLE_MS);
+}
+
 static const Uart5_CommandEntry_t uart5_command_table[] =
 {
   {"set_pid_speed_left", Uart5_Handle_SetPid, &uart5_pid_left_context},
@@ -249,7 +496,9 @@ static const Uart5_CommandEntry_t uart5_command_table[] =
   {"set_pid_line", Uart5_Handle_SetPid, &uart5_pid_line_context},
   {"set_target_rpm_left", Uart5_Handle_SetTargetRpm, &uart5_pid_left_context},
   {"set_target_rpm_right", Uart5_Handle_SetTargetRpm, &uart5_pid_right_context},
+  {"set_basic_rpm", Uart5_Handle_SetBasicRpm, NULL},
   {"set_motor_pwm", Uart5_Handle_SetMotorPwm, NULL},
+  {"measure_motor_pwm", Uart5_Handle_MeasureMotorPwm, NULL},
 };
 
 static void Uart5_Dispatch_Command(char *line)
@@ -420,17 +669,17 @@ void Uart5_Task(void)
     memset(uart5_data_buffer, 0, uart_data_len);
   }
 
+  Uart5_Pwm_Measure_Task();
+
   if(pid_running != 0U)
   {
-    /* 速度环、角速度环和循迹环的目标值与实际值，供上位机按 8 列 CSV 绘图。 */
+    /* 仅输出当前参与控制的速度环和循迹环，供上位机按 6 列 CSV 绘图。 */
     Uart_Printf(wireless_UART,
-                "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n",
+                "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n",
                 pid_speed_left.target,
                 left_encoder.rpm,
                 pid_speed_right.target,
                 right_encoder.rpm,
-                pid_angle.target,
-                pid_angle.current,
                 pid_line.target,
                 g_line_position_error);
   }

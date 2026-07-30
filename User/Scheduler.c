@@ -14,7 +14,7 @@ uint8_t task_num;
 static scheduler_task_t scheduler_task[] =
 {
   {Led_Task, 1, 0},
-//  {Key_Task, 50, 0},
+  {Key_Task, 10, 0},
   {Gray_Task, 10, 0},
   {Oled_Task, 10, 0},
   {Motor_Task, 10, 0},
@@ -30,7 +30,7 @@ static scheduler_task_t scheduler_task[] =
   {Uart6_Task, 10, 0},
   {System_State_Uart_Print, 800, 0},
 //  {Encoder_Task, 10, 0},
-//  {Gyroscope_Task, 10, 0},
+  {Gyroscope_Task, 100, 0},
 //  {PID_Task, 10, 0},
 };
 

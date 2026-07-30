@@ -278,7 +278,7 @@
                 <span class="chip">接口：UART5 / wireless_UART</span>
                 <span class="chip">调度周期：10 ms</span>
                 <span class="chip">命令结束：\r 或 \n</span>
-                <span class="chip">当前命令：7 条</span>
+                <span class="chip">当前命令：9 条</span>
             </div>
         </section>
 
@@ -317,7 +317,7 @@
                 <h2>01. PID 参数命令</h2>
                 <span class="count">4 条命令</span>
             </div>
-            <p class="section-intro">分别修改左右轮速度环、角速度环和循迹外环 PID 参数，参数在当前运行周期内立即生效。</p>
+            <p class="section-intro">分别修改左右轮速度环、保留的角速度环和循迹环 PID 参数。当前角速度环已旁路，循迹环直接输出左右轮目标转速差。</p>
             <table>
                 <thead>
                     <tr>
@@ -332,46 +332,46 @@
                     <tr>
                         <td class="num" data-label="序号">1</td>
                         <td data-label="命令"><code>set_pid_speed_left(kp,ki,kd,out_min,out_max)</code></td>
-                        <td data-label="使用示例"><code>set_pid_speed_left(1.5,0.01,0.2,-500,800)</code></td>
-                        <td data-label="作用">更新左轮速度环的比例、积分、微分系数和输出范围。</td>
-                        <td data-label="参数说明"><code>out_min</code> 必须小于等于 <code>out_max</code>，且当前实现要求 <code>out_max &gt;= 0</code>。</td>
+                        <td data-label="使用示例"><code>set_pid_speed_left(4.0,0.0,0.5,-200,200)</code></td>
+                        <td data-label="作用">更新左轮速度环的比例、积分、微分系数和 PID 修正量范围。</td>
+                        <td data-label="参数说明">速度环 PID 输出会叠加到转速前馈 PWM；默认修正范围为 <code>-200~200</code>。<code>out_min</code> 必须小于等于 <code>out_max</code>，且当前实现要求 <code>out_max &gt;= 0</code>。</td>
                     </tr>
                     <tr>
                         <td class="num" data-label="序号">2</td>
                         <td data-label="命令"><code>set_pid_speed_right(kp,ki,kd,out_min,out_max)</code></td>
-                        <td data-label="使用示例"><code>set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></td>
-                        <td data-label="作用">更新右轮速度环的比例、积分、微分系数和输出范围。</td>
+                        <td data-label="使用示例"><code>set_pid_speed_right(5.0,0.0,0.4,-200,200)</code></td>
+                        <td data-label="作用">更新右轮速度环的比例、积分、微分系数和 PID 修正量范围。</td>
                         <td data-label="参数说明">参数含义与左轮命令相同。左右轮命令相互独立，可以连续发送。</td>
                     </tr>
                     <tr>
                         <td class="num" data-label="序号">3</td>
                         <td data-label="命令"><code>set_pid_angle(kp,ki,kd,out_min,out_max)</code></td>
                         <td data-label="使用示例"><code>set_pid_angle(1.0,0.0,0.0,-100,100)</code></td>
-                        <td data-label="作用">更新角速度环参数；该环输入实际角速度，输出左右轮目标转速差。</td>
-                        <td data-label="参数说明">角速度采用右转为正，输出上下限单位为轮速差 RPM。</td>
+                        <td data-label="作用">更新保留的角速度环参数；当前 <code>PID_Task()</code> 不调用该环，因此参数修改暂不影响电机控制。</td>
+                        <td data-label="参数说明">接口和实现均保留，后续恢复角速度闭环时仍可使用。</td>
                     </tr>
                     <tr>
                         <td class="num" data-label="序号">4</td>
                         <td data-label="命令"><code>set_pid_line(kp,ki,kd,out_min,out_max)</code></td>
-                        <td data-label="使用示例"><code>set_pid_line(5.0,0.0,0.0,-100,100)</code></td>
-                        <td data-label="作用">更新循迹外环参数；该环输入灰度位置误差，输出目标角速度。</td>
-                        <td data-label="参数说明">当前目标灰度误差为 <code>0</code>，输出上下限单位为 deg/s。</td>
+                        <td data-label="使用示例"><code>set_pid_line(30.0,0.0,0.0,-200,200)</code></td>
+                        <td data-label="作用">更新循迹环参数；该环输入灰度位置误差，直接输出左右轮目标转速差。</td>
+                        <td data-label="参数说明">当前目标灰度误差为 <code>0</code>，输出上下限单位为 RPM；默认使用纯 P 控制。</td>
                     </tr>
                 </tbody>
             </table>
             <div class="note">以下命令可以一次发送多行，程序会按顺序全部解析。</div>
-            <pre><code>set_pid_speed_left(1.5,0.01,0.2,-500,800)
-set_pid_speed_right(1.6,0.02,0.3,-600,900)
+            <pre><code>set_pid_speed_left(4.0,0.0,0.5,-200,200)
+set_pid_speed_right(5.0,0.0,0.4,-200,200)
 set_pid_angle(1.0,0.0,0.0,-100,100)
-set_pid_line(5.0,0.0,0.0,-100,100)</code></pre>
+set_pid_line(30.0,0.0,0.0,-200,200)</code></pre>
         </section>
 
         <section class="section" id="rpm">
             <div class="section-header">
                 <h2>02. 目标 RPM 命令</h2>
-                <span class="count">2 条命令</span>
+                <span class="count">3 条命令</span>
             </div>
-            <p class="section-intro">左右轮目标 RPM 独立设置。命令成功后会同步更新 PID 控制器目标值和 OLED 对应目标值。</p>
+            <p class="section-intro">目标 RPM 可以按左右轮独立设置，也可以同时修改两侧基础目标。命令成功后会同步更新 PID 控制器和 OLED 目标值。</p>
             <table>
                 <thead>
                     <tr><th class="num">序号</th><th>命令</th><th>使用示例</th><th>作用</th><th>回显</th></tr>
@@ -391,10 +391,18 @@ set_pid_line(5.0,0.0,0.0,-100,100)</code></pre>
                         <td data-label="作用">只修改右轮速度环目标 RPM，不影响左轮。</td>
                         <td data-label="回显"><code>RPM OK: right target=450</code></td>
                     </tr>
+                    <tr>
+                        <td class="num" data-label="序号">3</td>
+                        <td data-label="命令"><code>set_basic_rpm(rpm)</code></td>
+                        <td data-label="使用示例"><code>set_basic_rpm(115)</code></td>
+                        <td data-label="作用">同时修改基础速度和左右轮基础目标 RPM，循迹轮速差仍会叠加到两侧最终目标。</td>
+                        <td data-label="回显"><code>RPM OK: basic target=115</code></td>
+                    </tr>
                 </tbody>
             </table>
             <div class="note">RPM 参数当前按有符号整数解析。修改成功后 OLED 目标值会同步刷新。</div>
-            <pre><code>set_target_rpm_left(500)
+            <pre><code>set_basic_rpm(115)
+set_target_rpm_left(500)
 set_target_rpm_right(450)
 set_pid_speed_left(1.5,0.01,0.2,-500,800)
 set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></pre>
@@ -403,9 +411,9 @@ set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></pre>
         <section class="section" id="pwm">
             <div class="section-header">
                 <h2>03. 电机 PWM 测试命令</h2>
-                <span class="count">1 条命令</span>
+                <span class="count">2 条命令</span>
             </div>
-            <p class="section-intro">直接设置左右电机 PWM，用于测量不同 PWM 下的轮速。第一个参数为左电机，第二个参数为右电机。</p>
+            <p class="section-intro">直接设置左右电机 PWM，或自动等待稳定后测量平均轮速。第一个参数为左电机，第二个参数为右电机。</p>
             <table>
                 <thead>
                     <tr><th class="num">序号</th><th>命令</th><th>使用示例</th><th>作用</th><th>回显</th></tr>
@@ -418,9 +426,16 @@ set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></pre>
                         <td data-label="作用">关闭 PID 控制，并通过 <code>Motor_Set_Speed()</code> 直接设置左右电机。</td>
                         <td data-label="回显"><code>PWM OK: requested_left=650 requested_right=670 applied_left=650 applied_right=670</code></td>
                     </tr>
+                    <tr>
+                        <td class="num" data-label="序号">2</td>
+                        <td data-label="命令"><code>measure_motor_pwm(left_pwm,right_pwm)</code></td>
+                        <td data-label="使用示例"><code>measure_motor_pwm(600,0)</code></td>
+                        <td data-label="作用">关闭 PID 并设置 PWM，稳定 2 秒后按编码器累计计数采样 2 秒，返回平均 RPM 并自动停止两侧电机。</td>
+                        <td data-label="回显"><code>PWM MEASURE OK: requested_left=600 applied_left=600 avg_left_rpm=52.31 requested_right=0 applied_right=0 avg_right_rpm=0.00 sample_ms=2000</code></td>
+                    </tr>
                 </tbody>
             </table>
-            <div class="note">当前 TIM1 周期对应范围为 <code>-999~999</code>，负数表示反转。该命令保留电机死区补偿，因此输入绝对值为 <code>1~574</code> 时，实际输出绝对值会变为 <code>575</code>；回显中的 <code>applied</code> 是补偿后的实际 PWM。发送 <code>set_motor_pwm(0,0)</code> 可停止两侧电机，恢复 PID 需通过现有 OLED 启动操作。</div>
+            <div class="note">当前 TIM1 周期对应范围为 <code>-999~999</code>，负数表示反转。电机驱动层死区已设为 <code>0</code>，合法范围内的手动 PWM 不再被自动抬升，因此回显中的 <code>applied</code> 与 <code>requested</code> 一致。测量期间发送 <code>set_motor_pwm(...)</code> 会取消测量并立即应用新输出，发送 <code>set_motor_pwm(0,0)</code> 可紧急停止两侧电机。OLED 重新启动 PID 也会取消测量。</div>
         </section>
 
         <section class="section" id="response">
@@ -442,6 +457,8 @@ set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></pre>
                     <tr><td class="num" data-label="序号">6</td><td data-label="场景">RPM 格式错误</td><td data-label="回显示例"><code>RPM ERROR: left format, expected 1 integer</code></td><td data-label="含义">目标 RPM 命令没有提供一个有效整数，或缺少右括号。</td></tr>
                     <tr><td class="num" data-label="序号">7</td><td data-label="场景">PWM 格式错误</td><td data-label="回显示例"><code>PWM ERROR: format, expected 2 integers</code></td><td data-label="含义">PWM 命令没有提供两个有效整数，或缺少右括号。</td></tr>
                     <tr><td class="num" data-label="序号">8</td><td data-label="场景">PWM 超出范围</td><td data-label="回显示例"><code>PWM ERROR: left range=-999..999, right range=-999..999</code></td><td data-label="含义">至少一个 PWM 参数超出对应电机定时器允许的范围，电机输出不会改变。</td></tr>
+                    <tr><td class="num" data-label="序号">9</td><td data-label="场景">PWM 测量进行中</td><td data-label="回显示例"><code>PWM MEASURE ERROR: busy</code></td><td data-label="含义">已有一轮自动测量尚未结束，新测量命令不会覆盖当前输出。</td></tr>
+                    <tr><td class="num" data-label="序号">10</td><td data-label="场景">PWM 测量取消</td><td data-label="回显示例"><code>PWM MEASURE CANCELED: motor output changed</code></td><td data-label="含义">测量期间 PID 被启用、手动 PWM 覆盖输出，或其他逻辑修改了电机输出。</td></tr>
                 </tbody>
             </table>
         </section>
@@ -451,8 +468,8 @@ set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></pre>
                 <h2>05. 波形遥测协议</h2>
                 <span class="count">CSV / 100 Hz</span>
             </div>
-            <p class="section-intro">在“小车启动计时”界面按键 1 启动后，UART5 每 10 ms 输出一行八列纯数值 CSV；按键 2 复位/暂停后停止输出。</p>
-            <pre><code>150.00,147.20,150.00,148.10,-12.50,-10.30,0.00,2.00</code></pre>
+            <p class="section-intro">在“小车启动计时”界面按键 1 启动后，UART5 每 10 ms 输出一行六列纯数值 CSV；按键 2 复位/暂停后停止输出。</p>
+            <pre><code>115.00,112.30,115.00,113.10,0.00,1.30</code></pre>
             <table>
                 <thead>
                     <tr><th class="num">列</th><th>字段</th><th>单位</th><th>说明</th></tr>
@@ -462,13 +479,11 @@ set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></pre>
                     <tr><td class="num" data-label="列">2</td><td data-label="字段">左轮实际转速</td><td data-label="单位">RPM</td><td data-label="说明"><code>left_encoder.rpm</code></td></tr>
                     <tr><td class="num" data-label="列">3</td><td data-label="字段">右轮目标转速</td><td data-label="单位">RPM</td><td data-label="说明"><code>pid_speed_right.target</code></td></tr>
                     <tr><td class="num" data-label="列">4</td><td data-label="字段">右轮实际转速</td><td data-label="单位">RPM</td><td data-label="说明"><code>right_encoder.rpm</code></td></tr>
-                    <tr><td class="num" data-label="列">5</td><td data-label="字段">目标角速度</td><td data-label="单位">deg/s</td><td data-label="说明"><code>pid_angle.target</code>，由循迹外环输出</td></tr>
-                    <tr><td class="num" data-label="列">6</td><td data-label="字段">实际角速度</td><td data-label="单位">deg/s</td><td data-label="说明"><code>pid_angle.current</code>，已扣除陀螺仪静态偏置，右转为正</td></tr>
-                    <tr><td class="num" data-label="列">7</td><td data-label="字段">目标灰度误差</td><td data-label="单位">位置误差</td><td data-label="说明"><code>pid_line.target</code>，当前固定为 <code>0</code></td></tr>
-                    <tr><td class="num" data-label="列">8</td><td data-label="字段">实际灰度误差</td><td data-label="单位">位置误差</td><td data-label="说明"><code>g_line_position_error</code>，丢线时保持上一次有效值</td></tr>
+                    <tr><td class="num" data-label="列">5</td><td data-label="字段">目标灰度误差</td><td data-label="单位">位置误差</td><td data-label="说明"><code>pid_line.target</code>，当前固定为 <code>0</code></td></tr>
+                    <tr><td class="num" data-label="列">6</td><td data-label="字段">实际灰度误差</td><td data-label="单位">位置误差</td><td data-label="说明"><code>g_line_position_error</code>，丢线时保持上一次有效值</td></tr>
                 </tbody>
             </table>
-            <div class="note">UART5 仍同时承载命令回显和错误信息，发送调参命令时非 CSV 文本可能混入波形数据流。</div>
+            <div class="note">CSV 仅包含当前参与控制的左右速度环和循迹环数据，不再输出已旁路的角速度环字段。UART5 仍同时承载命令回显和错误信息，发送调参命令时非 CSV 文本可能混入波形数据流。</div>
         </section>
 
         <section class="section" id="extension">
@@ -485,7 +500,9 @@ set_pid_speed_right(1.6,0.02,0.3,-600,900)</code></pre>
   {"set_pid_line", Uart5_Handle_SetPid, &amp;uart5_pid_line_context},
   {"set_target_rpm_left", Uart5_Handle_SetTargetRpm, &amp;uart5_pid_left_context},
   {"set_target_rpm_right", Uart5_Handle_SetTargetRpm, &amp;uart5_pid_right_context},
+  {"set_basic_rpm", Uart5_Handle_SetBasicRpm, NULL},
   {"set_motor_pwm", Uart5_Handle_SetMotorPwm, NULL},
+  {"measure_motor_pwm", Uart5_Handle_MeasureMotorPwm, NULL},
 };</code></pre>
             <div class="note">命令表位于 <code>User/App/uart_app.c</code>，UART5 任务由 <code>User/Scheduler.c</code> 按 10 ms 调度。新增命令后需要同步更新本页。</div>
         </section>

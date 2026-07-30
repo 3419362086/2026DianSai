@@ -29,7 +29,6 @@ void System_Init(void)
   HAL_TIM_Base_Start_IT(&htim2);
 }
 
-unsigned char key_timer10ms = 0;
 unsigned char timer10ms = 0;
 
 // TIM2 中断服务函数（1ms 中断）
@@ -37,20 +36,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if(htim->Instance != htim2.Instance) return;
   
-  /* 按键扫描任务 */
-  if(++key_timer10ms >= 10)
-  {
-    key_timer10ms = 0;
-//    Uart5_Task();
-    Key_Task();
-  }
-  
-  /* 实时任务 */
+  /* 中断内仅保留编码器采样和 PID，避免按键通信阻塞控制周期。 */
   if(++timer10ms >= 10)
   {
     timer10ms = 0;
     Encoder_Task();
-    Gyroscope_Task();
     PID_Task();
   }
 }
