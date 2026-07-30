@@ -51,8 +51,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     timer10ms = 0;
     Encoder_Task();
     Gyroscope_Task();
-    /* 先用本周期最新航向完成停车判定，再允许 PID 写入下一次 PWM。 */
-    Vehicle_Run_Task();
     PID_Task();
   }
 }

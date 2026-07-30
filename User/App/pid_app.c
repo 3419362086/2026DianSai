@@ -12,15 +12,22 @@
 #define RIGHT_BASE_PWM_SLOPE      0.9850767f
 #define RIGHT_BASE_PWM_INTERCEPT  531.65649f
 #define LINE_OUTPUT_LPF_ALPHA     0.35f  /* 新值权重，越大则响应越快、滤波越弱 */
+#define WHEEL_DIFF_LPF_ALPHA      0.25f  /* 轮速差新值权重，与目标角速度滤波独立 */
 #define ANGLE_INTEGRAL_LIMIT      100.0f
 #define YAW_RATE_JUMP_LIMIT       65.0f
+#define SPEED_COAST_ENTER_RPM     12.0f  /* 超过目标约 3 个编码器计数时进入滑行 */
+#define SPEED_COAST_EXIT_RPM       4.0f  /* 降至约 1 个编码器计数时恢复驱动 */
 
 static float target_yaw_rate_lpf;                    /* 滤波后的外环目标角速度 */
 static unsigned char line_output_filter_initialized; /* 首帧初始化标志 */
+static float wheel_speed_diff_lpf;                    /* 滤波后的中环轮速差 */
+static unsigned char wheel_diff_filter_initialized;  /* 轮速差滤波首帧标志 */
 static float last_valid_yaw_rate;                    /* 中环上一次有效角速度 */
 static unsigned char yaw_rate_filter_initialized;    /* 角速度跳变过滤初始化标志 */
+static unsigned char left_speed_coasting;            /* 左轮超速滑行状态 */
+static unsigned char right_speed_coasting;           /* 右轮超速滑行状态 */
 
-int basic_speed = 120; // 基础速度（单位：rpm）
+int basic_speed = 115; // 基础速度（单位：rpm）
 volatile int target_speed_left;
 volatile int target_speed_right;
 
@@ -52,8 +59,8 @@ PidParams_t pid_params_angle = {
     .kp = 10.0f,
     .ki = 0.075f,
     .kd = 1.0f,
-    .out_min = -70.0f,
-    .out_max = 70.0f,
+    .out_min = -65.0f,
+    .out_max = 65.0f,
 };
 
 PidParams_t pid_params_line = {
@@ -89,6 +96,37 @@ static int PID_Calculate_BasePwm(float target_rpm,
     return target_rpm > 0.0f ? rounded_pwm : -rounded_pwm;
 }
 
+/*
+ * 只在实际转速与目标同向时按超速量进入滑行；方向不一致时必须交还 PID
+ * 处理，不能滑行等待。进入和退出阈值分离，避免 10 ms 测速量化引起抖动。
+ */
+static unsigned char PID_Update_Coast_State(float target_rpm,
+                                            float current_rpm,
+                                            unsigned char is_coasting)
+{
+    float overspeed_rpm;
+
+    if((target_rpm > 0.0f) && (current_rpm > 0.0f))
+    {
+        overspeed_rpm = current_rpm - target_rpm;
+    }
+    else if((target_rpm < 0.0f) && (current_rpm < 0.0f))
+    {
+        overspeed_rpm = target_rpm - current_rpm;
+    }
+    else
+    {
+        return 0U;
+    }
+
+    if(is_coasting == 0U)
+    {
+        return (overspeed_rpm >= SPEED_COAST_ENTER_RPM) ? 1U : 0U;
+    }
+
+    return (overspeed_rpm > SPEED_COAST_EXIT_RPM) ? 1U : 0U;
+}
+
 void PID_Init(void)
 {
     pid_init(&pid_speed_left,
@@ -109,8 +147,12 @@ void PID_Init(void)
 
     target_yaw_rate_lpf = 0.0f;
     line_output_filter_initialized = 0U;
+    wheel_speed_diff_lpf = 0.0f;
+    wheel_diff_filter_initialized = 0U;
     last_valid_yaw_rate = 0.0f;
     yaw_rate_filter_initialized = 0U;
+    left_speed_coasting = 0U;
+    right_speed_coasting = 0U;
     
     
     target_speed_left = basic_speed;
@@ -135,7 +177,10 @@ void PID_Task(void)
     if(pid_running == 0)
     {
         line_output_filter_initialized = 0U;
+        wheel_diff_filter_initialized = 0U;
         yaw_rate_filter_initialized = 0U;
+        left_speed_coasting = 0U;
+        right_speed_coasting = 0U;
         return;
     }
     
@@ -199,6 +244,18 @@ void PID_Task(void)
     wheel_speed_diff = pid_constrain(wheel_speed_diff,
                                      pid_params_angle.out_min,
                                      pid_params_angle.out_max);
+    if(wheel_diff_filter_initialized == 0U)
+    {
+        /* 首帧直接跟随中环输出，避免每次启动时轮速差从零缓慢建立。 */
+        wheel_speed_diff_lpf = wheel_speed_diff;
+        wheel_diff_filter_initialized = 1U;
+    }
+    else
+    {
+        wheel_speed_diff_lpf += WHEEL_DIFF_LPF_ALPHA *
+                                (wheel_speed_diff - wheel_speed_diff_lpf);
+    }
+    wheel_speed_diff = wheel_speed_diff_lpf;
     // Uart_Printf(DEBUG_UART, "Target Yaw Rate: %.2f, Wheel Speed Diff: %.2f, Current Yaw Rate: %.2f\r\n",
     //         target_yaw_rate, wheel_speed_diff, current_yaw_rate);
 
@@ -221,19 +278,42 @@ void PID_Task(void)
                                            RIGHT_BASE_PWM_INTERCEPT,
                                            (int)right_motor.config.in1.htim->Init.Period);
 
-    // 使用位置式 PID 计算左右轮速度环输出
-    output_left_float = pid_calculate_positional(&pid_speed_left, left_encoder.rpm);
-    output_right_float = pid_calculate_positional(&pid_speed_right, right_encoder.rpm);
+    left_speed_coasting = PID_Update_Coast_State(left_target_rpm,
+                                                  left_encoder.rpm,
+                                                  left_speed_coasting);
+    right_speed_coasting = PID_Update_Coast_State(right_target_rpm,
+                                                   right_encoder.rpm,
+                                                   right_speed_coasting);
 
-    // PID_T 仍使用对称内部限幅，这里按串口配置的独立上下限做最终限幅。
-    output_left = (int)pid_constrain(output_left_float,
-                                     pid_params_left.out_min,
-                                     pid_params_left.out_max);
-    output_right = (int)pid_constrain(output_right_float,
-                                      pid_params_right.out_min,
-                                      pid_params_right.out_max);
-  
-    // 设置电机速度
-    Motor_Set_Speed(&left_motor, left_base_pwm + output_left);
-    Motor_Set_Speed(&right_motor, right_base_pwm + output_right);
+    if(1 == 0)
+    {
+        /* 滑行期间不累计速度环历史，恢复驱动时从当前误差重新计算。 */
+        pid_reset(&pid_speed_left);
+        Motor_Stop(&left_motor);
+    }
+    else
+    {
+        output_left_float = pid_calculate_positional(&pid_speed_left,
+                                                      left_encoder.rpm);
+        output_left = (int)pid_constrain(output_left_float,
+                                         pid_params_left.out_min,
+                                         pid_params_left.out_max);
+        Motor_Set_Speed(&left_motor, left_base_pwm + output_left);
+    }
+
+    if(1 == 0)
+    {
+        /* 左右轮独立滑行，转向时不强制另一侧同时撤掉驱动力。 */
+        pid_reset(&pid_speed_right);
+        Motor_Stop(&right_motor);
+    }
+    else
+    {
+        output_right_float = pid_calculate_positional(&pid_speed_right,
+                                                       right_encoder.rpm);
+        output_right = (int)pid_constrain(output_right_float,
+                                          pid_params_right.out_min,
+                                          pid_params_right.out_max);
+        Motor_Set_Speed(&right_motor, right_base_pwm + output_right);
+    }
 }

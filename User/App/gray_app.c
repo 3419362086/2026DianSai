@@ -7,7 +7,7 @@ volatile float g_line_position_error =0.0f;/* Ñ²ÏßºáÏòÆ«²î£¨¹©Íâ²¿ PID ¿ØÖÆÆ÷¶ÁÈ
 /* ¸ºÖµ ¡ú ºÚÏßÆ«×ó£¬ÕýÖµ ¡ú ºÚÏßÆ«ÓÒ                                     */
 /* ch0(+4) ¡­ ch3(+1) | ch4(-1) ¡­ ch7(-4)                              */
 /* ------------------------------------------------------------------ */
-float gray_weight[8] = {4.0f, 3.0f, 2.0f, 0.5f, -0.5f, -2.0f, -3.0f, -4.0f};
+float gray_weight[8] = {1.6f, 1.3f, 1.0f, 0.0f, -0.0f, -1.0f, -1.3f, -1.6f};
 
 void Gray_Init(void)
 {
@@ -43,6 +43,7 @@ void Gray_Task(void)
     //»ñÈ¡´«¸ÐÆ÷¿ª¹ØÁ¿½á¹û
     deal_IRdata(&gray_digtal[0], &gray_digtal[1], &gray_digtal[2], &gray_digtal[3],
                 &gray_digtal[4], &gray_digtal[5], &gray_digtal[6], &gray_digtal[7]);
+    Vehicle_Run_Task();
     g_line_position_error = BlackLine_SetTurn();
     // Uart_Printf(DEBUG_UART,"Black line position error: %.2f\r\n", g_line_position_error);
     // Uart_Printf(DEBUG_UART, "x1:%d, x2:%d, x3:%d, x4:%d, x5:%d, x6:%d, x7:%d, x8:%d\r\n", gray_digtal[0], gray_digtal[1], gray_digtal[2], gray_digtal[3], gray_digtal[4], gray_digtal[5], gray_digtal[6], gray_digtal[7]);
