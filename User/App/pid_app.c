@@ -11,8 +11,16 @@
 #define LEFT_BASE_PWM_INTERCEPT   537.11115f
 #define RIGHT_BASE_PWM_SLOPE      0.9850767f
 #define RIGHT_BASE_PWM_INTERCEPT  531.65649f
+#define LINE_OUTPUT_LPF_ALPHA     0.35f  /* 新值权重，越大则响应越快、滤波越弱 */
+#define ANGLE_INTEGRAL_LIMIT      100.0f
+#define YAW_RATE_JUMP_LIMIT       65.0f
 
-int basic_speed = 150; // 基础速度（单位：rpm）
+static float target_yaw_rate_lpf;                    /* 滤波后的外环目标角速度 */
+static unsigned char line_output_filter_initialized; /* 首帧初始化标志 */
+static float last_valid_yaw_rate;                    /* 中环上一次有效角速度 */
+static unsigned char yaw_rate_filter_initialized;    /* 角速度跳变过滤初始化标志 */
+
+int basic_speed = 120; // 基础速度（单位：rpm）
 volatile int target_speed_left;
 volatile int target_speed_right;
 
@@ -44,8 +52,8 @@ PidParams_t pid_params_angle = {
     .kp = 10.0f,
     .ki = 0.075f,
     .kd = 1.0f,
-    .out_min = -50.0f,
-    .out_max = 50.0f,
+    .out_min = -65.0f,
+    .out_max = 65.0f,
 };
 
 PidParams_t pid_params_line = {
@@ -98,6 +106,11 @@ void PID_Init(void)
     pid_init(&pid_line,
             pid_params_line.kp, pid_params_line.ki, pid_params_line.kd,
             0.0f, pid_params_line.out_max);
+
+    target_yaw_rate_lpf = 0.0f;
+    line_output_filter_initialized = 0U;
+    last_valid_yaw_rate = 0.0f;
+    yaw_rate_filter_initialized = 0U;
     
     
     target_speed_left = basic_speed;
@@ -119,7 +132,12 @@ volatile unsigned char pid_running = 0; // 默认暂停，等待计时页面启�
 
 void PID_Task(void)
 {
-    if(pid_running == 0) return;
+    if(pid_running == 0)
+    {
+        line_output_filter_initialized = 0U;
+        yaw_rate_filter_initialized = 0U;
+        return;
+    }
     
     float target_yaw_rate;
     float wheel_speed_diff;
@@ -141,9 +159,43 @@ void PID_Task(void)
     target_yaw_rate = pid_constrain(target_yaw_rate,
                                     pid_params_line.out_min,
                                     pid_params_line.out_max);
+    if(line_output_filter_initialized == 0U)
+    {
+        /* 首帧直接跟随当前输出，避免每次启动时从零缓慢爬升。 */
+        target_yaw_rate_lpf = target_yaw_rate;
+        line_output_filter_initialized = 1U;
+    }
+    else
+    {
+        target_yaw_rate_lpf += LINE_OUTPUT_LPF_ALPHA *
+                               (target_yaw_rate - target_yaw_rate_lpf);
+    }
+    target_yaw_rate = target_yaw_rate_lpf;
     pid_set_target(&pid_angle, target_yaw_rate);
     current_yaw_rate = icm20608.gyro.z - euler_angles.gz_bias;
+
+    if(yaw_rate_filter_initialized == 0U)
+    {
+        last_valid_yaw_rate = current_yaw_rate;
+        yaw_rate_filter_initialized = 1U;
+    }
+    else if((current_yaw_rate - last_valid_yaw_rate > YAW_RATE_JUMP_LIMIT) ||
+            (last_valid_yaw_rate - current_yaw_rate > YAW_RATE_JUMP_LIMIT))
+    {
+        /* 单周期跳变过大时沿用上一次有效值，避免尖峰使中环瞬时反向饱和。 */
+        current_yaw_rate = last_valid_yaw_rate;
+    }
+    else
+    {
+        last_valid_yaw_rate = current_yaw_rate;
+    }
+
     wheel_speed_diff = pid_calculate_positional(&pid_angle, current_yaw_rate);
+
+    /* 中环积分只用于补偿稳态偏差，避免持续小误差将轮速差推至输出限幅。 */
+    pid_app_limit_integral(&pid_angle,
+                           -ANGLE_INTEGRAL_LIMIT,
+                           ANGLE_INTEGRAL_LIMIT);
     wheel_speed_diff = pid_constrain(wheel_speed_diff,
                                      pid_params_angle.out_min,
                                      pid_params_angle.out_max);
