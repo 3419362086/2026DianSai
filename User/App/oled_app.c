@@ -1,15 +1,15 @@
 #include "oled_app.h"
 
 /*
- * 主菜单标题“题二”使用 GBK 编码，字节分别为 0xCC 0xE2 和 0xB6 0xFE。
- * 原 CHINESE_16x16 字库没有这两个字，因此菜单查找不到字模时会保留屏幕旧内容，
+ * 主菜单标题“题二”和“题四”使用 GBK 编码。原 CHINESE_16x16 字库没有
+ * “题”“二”“四”，因此菜单查找不到字模时会保留屏幕旧内容，
  * 视觉上表现为标题乱码或显示成上一项内容。
  *
  * 下面两个字模与原字库保持相同格式：16x16 宋体、按 SSD1306 页布局逐列存储，
  * 前 16 字节对应上方 8 行，后 16 字节对应下方 8 行。字模位于 Flash，
- * 不占用运行时 RAM；这里只补菜单实际使用的两个字，避免扩大通用字库的修改范围。
+ * 不占用运行时 RAM；这里只补菜单实际使用的三个字，避免扩大通用字库的修改范围。
  */
-static const uint8_t oled_menu_glyph_question_two[2][32] =
+static const uint8_t oled_menu_question_glyphs[3][32] =
 {
     /* “题”：GBK 0xCC 0xE2，Unicode U+9898。 */
     {
@@ -24,6 +24,13 @@ static const uint8_t oled_menu_glyph_question_two[2][32] =
         0x08,0x08,0x08,0x08,0x08,0x00,0x00,0x00,
         0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,
         0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x00
+    },
+    /* “四”：GBK 0xCB 0xC4，Unicode U+56DB。 */
+    {
+        0x00,0xFC,0x04,0x04,0x04,0xFC,0x04,0x04,
+        0x04,0xFC,0x04,0x04,0x04,0xFC,0x00,0x00,
+        0x00,0x7F,0x28,0x24,0x23,0x20,0x20,0x20,
+        0x20,0x21,0x22,0x22,0x22,0x7F,0x00,0x00
     }
 };
 
@@ -85,13 +92,13 @@ static void Oled_Menu_Show_16x16_Glyph(uint8_t x,
 }
 
 /**
- * @brief  Easy Menu 的中文行显示适配函数，补充主菜单“题二”字模。
+ * @brief  Easy Menu 的中文行显示适配函数，补充主菜单“题二”“题四”字模。
  * @param  x             字符左边界的像素 X 坐标。
  * @param  line          菜单行号；0、1 分别映射到 OLED 第 0、2 页。
  * @param  chinese_char  指向一个 GBK 双字节汉字编码。
  * @param  reverse_flag  菜单选中项的反色标志。
  *
- * @note   只截获“题”和“二”。其他汉字继续调用项目原有显示函数，保持原行为。
+ * @note   只截获“题”“二”“四”。其他汉字继续调用项目原有显示函数，保持原行为。
  */
 static void Oled_Menu_Display_Chinese_Char_Line(unsigned short int x,
                                                 unsigned char line,
@@ -100,8 +107,8 @@ static void Oled_Menu_Display_Chinese_Char_Line(unsigned short int x,
 {
     /* 以无符号字节比较 GBK，避免 char 默认有符号时出现负值比较问题。 */
     const uint8_t *gbk_code = (const uint8_t *)chinese_char;
-    /* 补充字模编号：0 为“题”，1 为“二”；2 表示不在补充字模中。 */
-    uint8_t glyph_index = 2U;
+    /* 补充字模编号：0 为“题”，1 为“二”，2 为“四”；3 表示未匹配。 */
+    uint8_t glyph_index = 3U;
 
     if((gbk_code[0] == 0xCCU) && (gbk_code[1] == 0xE2U))
     {
@@ -111,12 +118,16 @@ static void Oled_Menu_Display_Chinese_Char_Line(unsigned short int x,
     {
         glyph_index = 1U;
     }
+    else if((gbk_code[0] == 0xCBU) && (gbk_code[1] == 0xC4U))
+    {
+        glyph_index = 2U;
+    }
 
-    if((glyph_index < 2U) && (line < 2U))
+    if((glyph_index < 3U) && (line < 2U))
     {
         Oled_Menu_Show_16x16_Glyph((uint8_t)x,
                                   (uint8_t)(line * 2U),
-                                  oled_menu_glyph_question_two[glyph_index],
+                                  oled_menu_question_glyphs[glyph_index],
                                   reverse_flag);
         return;
     }

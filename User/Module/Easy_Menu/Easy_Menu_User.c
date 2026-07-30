@@ -50,6 +50,7 @@ Ordinary_Page main_page;
     Goto_Item main_page_10_item;
     Goto_Item main_page_11_item;
     Goto_Item main_page_12_item;
+    Goto_Item main_page_13_item;
     Show_Page rtc_page;
     Ordinary_Page led_page;
         Switch_Item led_page_1_item;
@@ -111,6 +112,7 @@ Ordinary_Page main_page;
         Show_Page github_page_1;
         Show_Page bilibili_page_2;
     Show_Page vehicle_run_timer_page;
+    Show_Page question_four_run_timer_page;
 /* ================================================================= 枚举列表 ================================================================= */
 char *ordinary_page_4_3_item_enum_str[2] = {
     "暂停",
@@ -355,10 +357,11 @@ void Ordinary_Page_9_2_Item_Callback(char *str)
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE VALUE BEGIN */
 unsigned char bmp_index = 0;
-/* OLED 上一次已经显示的整秒时间；UINT32_MAX 强制进入页面时首次绘制。 */
-static uint32_t vehicle_run_display_seconds = UINT32_MAX;
-/* OLED 上一次已经显示的运行状态；0xFF 不属于有效状态，用于强制首次绘制。 */
-static unsigned char vehicle_run_display_state = 0xFFU;
+/* 两个页面分别保存显示缓存，切换题目时不会沿用另一页面的刷新状态。 */
+static uint32_t question_two_display_seconds = UINT32_MAX;
+static unsigned char question_two_display_state = 0xFFU;
+static uint32_t question_four_display_seconds = UINT32_MAX;
+static unsigned char question_four_display_state = 0xFFU;
 /* USER CODE VALUE END */
 /* Private function ----------------------------------------------------------*/
 void Start_Page_Enter_Callback(void)
@@ -471,12 +474,46 @@ void Bilibili_Page_2_Enter_Callback(void)
 }
 
 void Vehicle_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input);
+void Question4_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input);
+
+/* 仅重绘发生变化的状态行或时间行，避免周期回调反复刷新整个 OLED。 */
+static void Vehicle_Run_Timer_Page_Display(uint32_t elapsed_ms,
+                                           unsigned char running_state,
+                                           uint32_t *display_seconds,
+                                           unsigned char *display_state)
+{
+    uint32_t elapsed_seconds = elapsed_ms / 1000U;
+    unsigned char display_changed = 0U;
+
+    if(running_state != *display_state)
+    {
+        Easy_Menu_Area_Clear(0, EASY_MENU_COL_MAX_NUM - 1U, 0, 0);
+        Easy_Menu_Display_String(1, 0, running_state ? "启动" : "暂停");
+        *display_state = running_state;
+        display_changed = 1U;
+    }
+
+    if(elapsed_seconds != *display_seconds)
+    {
+        Easy_Menu_Area_Clear(0, EASY_MENU_COL_MAX_NUM - 1U, 1, 1);
+        Easy_Menu_Printf(1, 1, "运行时间 %lu:%02lu",
+                         (unsigned long)(elapsed_seconds / 60U),
+                         (unsigned long)(elapsed_seconds % 60U));
+        *display_seconds = elapsed_seconds;
+        display_changed = 1U;
+    }
+
+    if(display_changed != 0U)
+    {
+        Easy_Menu_All_Update();
+    }
+}
 
 void Vehicle_Run_Timer_Page_Enter_Callback(void)
 {
     /* 使状态行和时间行在进入页面时都被判定为已变化。 */
-    vehicle_run_display_seconds = UINT32_MAX;
-    vehicle_run_display_state = 0xFFU;
+    question_two_display_seconds = UINT32_MAX;
+    question_two_display_state = 0xFFU;
 
     /*
      * 立即生成题二首帧，避免等待 100 ms 周期回调期间显示上一页面的残留内容。
@@ -487,13 +524,6 @@ void Vehicle_Run_Timer_Page_Enter_Callback(void)
 
 void Vehicle_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input)
 {
-    /* OLED 显示的整秒时间，只有数值变化时才重绘时间行。 */
-    uint32_t elapsed_seconds;
-    /* 题二运行状态快照：1 为启动，0 为暂停。 */
-    unsigned char running_state;
-    /* 本周期显示缓存是否发生变化，用于避免无变化时提交 OLED 刷新。 */
-    unsigned char display_changed = 0U;
-
     (void)temp;
 
     if(user_input == EASY_MENU_UP)
@@ -505,39 +535,40 @@ void Vehicle_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE use
         Vehicle_Run_Reset();
     }
 
-    running_state = Vehicle_Run_Get_State();
+    Vehicle_Run_Timer_Page_Display(Vehicle_Run_Get_Elapsed_Ms(),
+                                   Vehicle_Run_Get_State(),
+                                   &question_two_display_seconds,
+                                   &question_two_display_state);
+}
 
-    if(running_state != vehicle_run_display_state)
+void Question4_Run_Timer_Page_Enter_Callback(void)
+{
+    question_four_display_seconds = UINT32_MAX;
+    question_four_display_state = 0xFFU;
+    Question4_Run_Timer_Page_Period_Callback(NULL, EASY_MENU_NONE);
+}
+
+void Question4_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input)
+{
+    (void)temp;
+
+    if(user_input == EASY_MENU_UP)
     {
-        Easy_Menu_Area_Clear(0, EASY_MENU_COL_MAX_NUM - 1U, 0, 0);
-        Easy_Menu_Display_String(1, 0, running_state ? "启动" : "暂停");
-        vehicle_run_display_state = running_state;
-        display_changed = 1U;
+        Vehicle_Run_Question4_Start();
+    }
+    else if(user_input == EASY_MENU_DOWN)
+    {
+        Vehicle_Run_Question4_Reset();
     }
 
-    elapsed_seconds = Vehicle_Run_Get_Elapsed_Ms() / 1000U;
-    if(elapsed_seconds != vehicle_run_display_seconds)
-    {
-        Easy_Menu_Area_Clear(0, EASY_MENU_COL_MAX_NUM - 1U, 1, 1);
-        Easy_Menu_Printf(1, 1, "运行时间 %lu:%02lu",
-                         (unsigned long)(elapsed_seconds / 60U),
-                         (unsigned long)(elapsed_seconds % 60U));
-        vehicle_run_display_seconds = elapsed_seconds;
-        display_changed = 1U;
-    }
-
-    /*
-     * 仅当状态或整秒时间变化时提交缓存；Easy Menu 随后逐行比较新旧缓存，
-     * 只写入发生变化的行，不会每 100 ms 刷新整个 OLED。
-     */
-    if(display_changed != 0U)
-    {
-        Easy_Menu_All_Update();
-    }
+    Vehicle_Run_Timer_Page_Display(Vehicle_Run_Question4_Get_Elapsed_Ms(),
+                                   Vehicle_Run_Question4_Get_State(),
+                                   &question_four_display_seconds,
+                                   &question_four_display_state);
 }
 
 /* =========================================================== 设置列表（普通页面） =========================================================== */
-Item *main_page_items[12] = {
+Item *main_page_items[13] = {
     ITEM(main_page_1_item),
     ITEM(main_page_2_item),
     ITEM(main_page_3_item),
@@ -549,7 +580,8 @@ Item *main_page_items[12] = {
     ITEM(main_page_9_item),
     ITEM(main_page_10_item),
     ITEM(main_page_11_item),
-    ITEM(main_page_12_item)
+    ITEM(main_page_12_item),
+    ITEM(main_page_13_item)
 };
 
 Item *led_page_items[4] = {
@@ -638,7 +670,7 @@ Item *ordinary_page_10_items[10] = {
 void Easy_Menu_Ui_Init(void)
 {
     Show_Page_Init(NULL, PAGE(start_page), "Start page", 16, Start_Page_Enter_Callback, Start_Page_Period_Callback, Start_Page_Exit_Callback);
-    Ordinary_Page_Init(NULL, PAGE(main_page), "Main", main_page_items, 12);
+    Ordinary_Page_Init(NULL, PAGE(main_page), "Main", main_page_items, 13);
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_1_item), "RTC 时钟", PAGE(rtc_page));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_2_item), "LED 控制", PAGE(led_page));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_3_item), "灰度传感器", PAGE(show_page_1));
@@ -651,6 +683,7 @@ void Easy_Menu_Ui_Init(void)
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_10_item), "Flash", PAGE(ordinary_page_9));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_11_item), "关于", PAGE(ordinary_page_10));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_12_item), "题二", PAGE(vehicle_run_timer_page));
+        Goto_Item_Init(PAGE(main_page), ITEM(main_page_13_item), "\xCC\xE2\xCB\xC4", PAGE(question_four_run_timer_page));
     Show_Page_Init(PAGE(main_page), PAGE(rtc_page), "RTC 时钟", 100, Rtc_Page_Enter_Callback, Rtc_Page_Period_Callback, Rtc_Page_Exit_Callback);
     Ordinary_Page_Init(PAGE(main_page), PAGE(led_page), "LED 控制", led_page_items, 4);
         Switch_Item_Init(PAGE(led_page), ITEM(led_page_1_item), "LED1", &Easy_Menu_Ui_Data.led1, Led_Page_1_Item_Callback);
@@ -712,6 +745,7 @@ void Easy_Menu_Ui_Init(void)
     Show_Page_Init(PAGE(ordinary_page_10), PAGE(github_page_1), "Github:", 100, Github_Page_1_Enter_Callback, NULL, NULL);
     Show_Page_Init(PAGE(ordinary_page_10), PAGE(bilibili_page_2), "Bilibili:", 100, Bilibili_Page_2_Enter_Callback, NULL, NULL);
     Show_Page_Init(PAGE(main_page), PAGE(vehicle_run_timer_page), "启动计时", 100, Vehicle_Run_Timer_Page_Enter_Callback, Vehicle_Run_Timer_Page_Period_Callback, NULL);
+    Show_Page_Init(PAGE(main_page), PAGE(question_four_run_timer_page), "\xC6\xF4\xB6\xAF\xBC\xC6\xCA\xB1", 100, Question4_Run_Timer_Page_Enter_Callback, Question4_Run_Timer_Page_Period_Callback, NULL);
     
     Easy_Menu_Goto_Page(PAGE(start_page));
 }
