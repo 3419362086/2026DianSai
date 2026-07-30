@@ -575,6 +575,28 @@
           "进入回调函数": true,
           "退出回调函数": false
         }
+      },
+      {
+        "name": "题五",
+        "type": "展示页面",
+        "properties": {
+          "变量名": "question_five_run_timer_page",
+          "周期": "100",
+          "周期回调函数": true,
+          "进入回调函数": true,
+          "退出回调函数": false
+        }
+      },
+      {
+        "name": "题六",
+        "type": "展示页面",
+        "properties": {
+          "变量名": "question_six_run_timer_page",
+          "周期": "100",
+          "周期回调函数": true,
+          "进入回调函数": true,
+          "退出回调函数": false
+        }
       }
     ]
   }

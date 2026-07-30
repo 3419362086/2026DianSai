@@ -51,6 +51,8 @@ Ordinary_Page main_page;
     Goto_Item main_page_11_item;
     Goto_Item main_page_12_item;
     Goto_Item main_page_13_item;
+    Goto_Item main_page_14_item;
+    Goto_Item main_page_15_item;
     Show_Page rtc_page;
     Ordinary_Page led_page;
         Switch_Item led_page_1_item;
@@ -113,6 +115,8 @@ Ordinary_Page main_page;
         Show_Page bilibili_page_2;
     Show_Page vehicle_run_timer_page;
     Show_Page question_four_run_timer_page;
+    Show_Page question_five_run_timer_page;
+    Show_Page question_six_run_timer_page;
 /* ================================================================= 枚举列表 ================================================================= */
 char *ordinary_page_4_3_item_enum_str[2] = {
     "暂停",
@@ -362,6 +366,10 @@ static uint32_t question_two_display_seconds = UINT32_MAX;
 static unsigned char question_two_display_state = 0xFFU;
 static uint32_t question_four_display_seconds = UINT32_MAX;
 static unsigned char question_four_display_state = 0xFFU;
+static uint32_t question_five_display_seconds = UINT32_MAX;
+static unsigned char question_five_display_state = 0xFFU;
+static uint32_t question_six_display_seconds = UINT32_MAX;
+static unsigned char question_six_display_state = 0xFFU;
 /* USER CODE VALUE END */
 /* Private function ----------------------------------------------------------*/
 void Start_Page_Enter_Callback(void)
@@ -475,6 +483,8 @@ void Bilibili_Page_2_Enter_Callback(void)
 
 void Vehicle_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input);
 void Question4_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input);
+void Question5_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input);
+void Question6_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input);
 
 /* 仅重绘发生变化的状态行或时间行，避免周期回调反复刷新整个 OLED。 */
 static void Vehicle_Run_Timer_Page_Display(uint32_t elapsed_ms,
@@ -567,8 +577,60 @@ void Question4_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE u
                                    &question_four_display_state);
 }
 
+void Question5_Run_Timer_Page_Enter_Callback(void)
+{
+    question_five_display_seconds = UINT32_MAX;
+    question_five_display_state = 0xFFU;
+    Question5_Run_Timer_Page_Period_Callback(NULL, EASY_MENU_NONE);
+}
+
+void Question5_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input)
+{
+    (void)temp;
+
+    if(user_input == EASY_MENU_UP)
+    {
+        Vehicle_Run_Question5_Start();
+    }
+    else if(user_input == EASY_MENU_DOWN)
+    {
+        Vehicle_Run_Question5_Reset();
+    }
+
+    Vehicle_Run_Timer_Page_Display(Vehicle_Run_Question5_Get_Elapsed_Ms(),
+                                   Vehicle_Run_Question5_Get_State(),
+                                   &question_five_display_seconds,
+                                   &question_five_display_state);
+}
+
+void Question6_Run_Timer_Page_Enter_Callback(void)
+{
+    question_six_display_seconds = UINT32_MAX;
+    question_six_display_state = 0xFFU;
+    Question6_Run_Timer_Page_Period_Callback(NULL, EASY_MENU_NONE);
+}
+
+void Question6_Run_Timer_Page_Period_Callback(void* temp, Easy_Menu_Input_TYPE user_input)
+{
+    (void)temp;
+
+    if(user_input == EASY_MENU_UP)
+    {
+        Vehicle_Run_Question6_Start();
+    }
+    else if(user_input == EASY_MENU_DOWN)
+    {
+        Vehicle_Run_Question6_Reset();
+    }
+
+    Vehicle_Run_Timer_Page_Display(Vehicle_Run_Question6_Get_Elapsed_Ms(),
+                                   Vehicle_Run_Question6_Get_State(),
+                                   &question_six_display_seconds,
+                                   &question_six_display_state);
+}
+
 /* =========================================================== 设置列表（普通页面） =========================================================== */
-Item *main_page_items[13] = {
+Item *main_page_items[15] = {
     ITEM(main_page_1_item),
     ITEM(main_page_2_item),
     ITEM(main_page_3_item),
@@ -581,7 +643,9 @@ Item *main_page_items[13] = {
     ITEM(main_page_10_item),
     ITEM(main_page_11_item),
     ITEM(main_page_12_item),
-    ITEM(main_page_13_item)
+    ITEM(main_page_13_item),
+    ITEM(main_page_14_item),
+    ITEM(main_page_15_item)
 };
 
 Item *led_page_items[4] = {
@@ -670,7 +734,7 @@ Item *ordinary_page_10_items[10] = {
 void Easy_Menu_Ui_Init(void)
 {
     Show_Page_Init(NULL, PAGE(start_page), "Start page", 16, Start_Page_Enter_Callback, Start_Page_Period_Callback, Start_Page_Exit_Callback);
-    Ordinary_Page_Init(NULL, PAGE(main_page), "Main", main_page_items, 13);
+    Ordinary_Page_Init(NULL, PAGE(main_page), "Main", main_page_items, 15);
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_1_item), "RTC 时钟", PAGE(rtc_page));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_2_item), "LED 控制", PAGE(led_page));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_3_item), "灰度传感器", PAGE(show_page_1));
@@ -684,6 +748,8 @@ void Easy_Menu_Ui_Init(void)
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_11_item), "关于", PAGE(ordinary_page_10));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_12_item), "题二", PAGE(vehicle_run_timer_page));
         Goto_Item_Init(PAGE(main_page), ITEM(main_page_13_item), "\xCC\xE2\xCB\xC4", PAGE(question_four_run_timer_page));
+        Goto_Item_Init(PAGE(main_page), ITEM(main_page_14_item), "\xCC\xE2\xCE\xE5", PAGE(question_five_run_timer_page));
+        Goto_Item_Init(PAGE(main_page), ITEM(main_page_15_item), "\xCC\xE2\xC1\xF9", PAGE(question_six_run_timer_page));
     Show_Page_Init(PAGE(main_page), PAGE(rtc_page), "RTC 时钟", 100, Rtc_Page_Enter_Callback, Rtc_Page_Period_Callback, Rtc_Page_Exit_Callback);
     Ordinary_Page_Init(PAGE(main_page), PAGE(led_page), "LED 控制", led_page_items, 4);
         Switch_Item_Init(PAGE(led_page), ITEM(led_page_1_item), "LED1", &Easy_Menu_Ui_Data.led1, Led_Page_1_Item_Callback);
@@ -746,6 +812,8 @@ void Easy_Menu_Ui_Init(void)
     Show_Page_Init(PAGE(ordinary_page_10), PAGE(bilibili_page_2), "Bilibili:", 100, Bilibili_Page_2_Enter_Callback, NULL, NULL);
     Show_Page_Init(PAGE(main_page), PAGE(vehicle_run_timer_page), "启动计时", 100, Vehicle_Run_Timer_Page_Enter_Callback, Vehicle_Run_Timer_Page_Period_Callback, NULL);
     Show_Page_Init(PAGE(main_page), PAGE(question_four_run_timer_page), "\xC6\xF4\xB6\xAF\xBC\xC6\xCA\xB1", 100, Question4_Run_Timer_Page_Enter_Callback, Question4_Run_Timer_Page_Period_Callback, NULL);
+    Show_Page_Init(PAGE(main_page), PAGE(question_five_run_timer_page), "\xC6\xF4\xB6\xAF\xBC\xC6\xCA\xB1", 100, Question5_Run_Timer_Page_Enter_Callback, Question5_Run_Timer_Page_Period_Callback, NULL);
+    Show_Page_Init(PAGE(main_page), PAGE(question_six_run_timer_page), "\xC6\xF4\xB6\xAF\xBC\xC6\xCA\xB1", 100, Question6_Run_Timer_Page_Enter_Callback, Question6_Run_Timer_Page_Period_Callback, NULL);
     
     Easy_Menu_Goto_Page(PAGE(start_page));
 }

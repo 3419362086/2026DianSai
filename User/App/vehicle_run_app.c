@@ -3,7 +3,11 @@
 
 #define VEHICLE_RUN_QUESTION_TWO_BASE_RPM   (90)
 #define VEHICLE_RUN_QUESTION_FOUR_BASE_RPM  (75)
+#define VEHICLE_RUN_QUESTION_FIVE_BASE_RPM  (75)
+#define VEHICLE_RUN_QUESTION_SIX_BASE_RPM   (75)
 #define VEHICLE_RUN_QUESTION_FOUR_STOP_MS   (7000U)
+#define VEHICLE_RUN_QUESTION_FIVE_STOP_MS   (28000U)
+#define VEHICLE_RUN_QUESTION_SIX_STOP_MS    (28000U)
 #define VEHICLE_RUN_STOP_YAW_DEGREES        (250.0f)
 #define VEHICLE_RUN_STOP_GRAY_COUNT         (3U)
 
@@ -17,7 +21,9 @@ typedef enum
 {
     VEHICLE_RUN_OWNER_NONE = 0,
     VEHICLE_RUN_OWNER_QUESTION_TWO,
-    VEHICLE_RUN_OWNER_QUESTION_FOUR
+    VEHICLE_RUN_OWNER_QUESTION_FOUR,
+    VEHICLE_RUN_OWNER_QUESTION_FIVE,
+    VEHICLE_RUN_OWNER_QUESTION_SIX
 } Vehicle_Run_Owner_t;
 
 typedef struct
@@ -27,7 +33,7 @@ typedef struct
     volatile uint32_t elapsed_ms;
 } Vehicle_Run_Context_t;
 
-/* 题二和题四分别保存状态与计时，只共享实际电机和 PID 控制资源。 */
+/* 四道题分别保存状态与计时，只共享实际电机和 PID 控制资源。 */
 static Vehicle_Run_Context_t question_two_run = {
     .state = VEHICLE_RUN_PAUSED,
     .start_tick = 0U,
@@ -40,10 +46,22 @@ static Vehicle_Run_Context_t question_four_run = {
     .elapsed_ms = 0U,
 };
 
+static Vehicle_Run_Context_t question_five_run = {
+    .state = VEHICLE_RUN_PAUSED,
+    .start_tick = 0U,
+    .elapsed_ms = 0U,
+};
+
+static Vehicle_Run_Context_t question_six_run = {
+    .state = VEHICLE_RUN_PAUSED,
+    .start_tick = 0U,
+    .elapsed_ms = 0U,
+};
+
 /* 当前占用电机和 PID 的题目；任何时刻最多只能有一个所有者。 */
 static volatile Vehicle_Run_Owner_t vehicle_run_owner = VEHICLE_RUN_OWNER_NONE;
 
-/* 以下转角和灰度状态仅属于题二，题四不会读取或修改。 */
+/* 以下转角和灰度状态仅属于题二，其他三道题不会读取或修改。 */
 static float question_two_last_yaw;
 static float question_two_accumulated_yaw;
 static unsigned char question_two_gray_stop_armed;
@@ -86,17 +104,44 @@ static void Vehicle_Run_Brake_And_Latch(Vehicle_Run_Context_t *context)
 /* 在另一道题接管电机前急停并锁存原运行时间。调用者必须已关闭中断。 */
 static void Vehicle_Run_Release_Current_Owner(Vehicle_Run_Owner_t next_owner)
 {
-    if((vehicle_run_owner == VEHICLE_RUN_OWNER_QUESTION_TWO) &&
-       (next_owner != VEHICLE_RUN_OWNER_QUESTION_TWO) &&
-       (question_two_run.state == VEHICLE_RUN_RUNNING))
+    if(vehicle_run_owner == next_owner)
     {
-        Vehicle_Run_Brake_And_Latch(&question_two_run);
+        return;
     }
-    else if((vehicle_run_owner == VEHICLE_RUN_OWNER_QUESTION_FOUR) &&
-            (next_owner != VEHICLE_RUN_OWNER_QUESTION_FOUR) &&
-            (question_four_run.state == VEHICLE_RUN_RUNNING))
+
+    switch(vehicle_run_owner)
     {
-        Vehicle_Run_Brake_And_Latch(&question_four_run);
+        case VEHICLE_RUN_OWNER_QUESTION_TWO:
+            if(question_two_run.state == VEHICLE_RUN_RUNNING)
+            {
+                Vehicle_Run_Brake_And_Latch(&question_two_run);
+            }
+            break;
+
+        case VEHICLE_RUN_OWNER_QUESTION_FOUR:
+            if(question_four_run.state == VEHICLE_RUN_RUNNING)
+            {
+                Vehicle_Run_Brake_And_Latch(&question_four_run);
+            }
+            break;
+
+        case VEHICLE_RUN_OWNER_QUESTION_FIVE:
+            if(question_five_run.state == VEHICLE_RUN_RUNNING)
+            {
+                Vehicle_Run_Brake_And_Latch(&question_five_run);
+            }
+            break;
+
+        case VEHICLE_RUN_OWNER_QUESTION_SIX:
+            if(question_six_run.state == VEHICLE_RUN_RUNNING)
+            {
+                Vehicle_Run_Brake_And_Latch(&question_six_run);
+            }
+            break;
+
+        case VEHICLE_RUN_OWNER_NONE:
+        default:
+            break;
     }
 }
 
@@ -225,6 +270,34 @@ void Vehicle_Run_Question4_Reset(void)
                               VEHICLE_RUN_QUESTION_FOUR_BASE_RPM);
 }
 
+void Vehicle_Run_Question5_Start(void)
+{
+    Vehicle_Run_Start_Context(&question_five_run,
+                              VEHICLE_RUN_OWNER_QUESTION_FIVE,
+                              VEHICLE_RUN_QUESTION_FIVE_BASE_RPM);
+}
+
+void Vehicle_Run_Question5_Reset(void)
+{
+    Vehicle_Run_Reset_Context(&question_five_run,
+                              VEHICLE_RUN_OWNER_QUESTION_FIVE,
+                              VEHICLE_RUN_QUESTION_FIVE_BASE_RPM);
+}
+
+void Vehicle_Run_Question6_Start(void)
+{
+    Vehicle_Run_Start_Context(&question_six_run,
+                              VEHICLE_RUN_OWNER_QUESTION_SIX,
+                              VEHICLE_RUN_QUESTION_SIX_BASE_RPM);
+}
+
+void Vehicle_Run_Question6_Reset(void)
+{
+    Vehicle_Run_Reset_Context(&question_six_run,
+                              VEHICLE_RUN_OWNER_QUESTION_SIX,
+                              VEHICLE_RUN_QUESTION_SIX_BASE_RPM);
+}
+
 void Vehicle_Run_Task(void)
 {
     float current_yaw;
@@ -232,16 +305,40 @@ void Vehicle_Run_Task(void)
     uint8_t active_gray_count = 0U;
     uint8_t channel_index;
     uint32_t interrupt_state;
+    uint32_t timed_stop_ms = 0U;
+    Vehicle_Run_Context_t *timed_run = NULL;
 
-    if((vehicle_run_owner == VEHICLE_RUN_OWNER_QUESTION_FOUR) &&
-       (question_four_run.state == VEHICLE_RUN_RUNNING))
+    switch(vehicle_run_owner)
     {
-        if((HAL_GetTick() - question_four_run.start_tick) >=
-           VEHICLE_RUN_QUESTION_FOUR_STOP_MS)
+        case VEHICLE_RUN_OWNER_QUESTION_FOUR:
+            timed_run = &question_four_run;
+            timed_stop_ms = VEHICLE_RUN_QUESTION_FOUR_STOP_MS;
+            break;
+
+        case VEHICLE_RUN_OWNER_QUESTION_FIVE:
+            timed_run = &question_five_run;
+            timed_stop_ms = VEHICLE_RUN_QUESTION_FIVE_STOP_MS;
+            break;
+
+        case VEHICLE_RUN_OWNER_QUESTION_SIX:
+            timed_run = &question_six_run;
+            timed_stop_ms = VEHICLE_RUN_QUESTION_SIX_STOP_MS;
+            break;
+
+        case VEHICLE_RUN_OWNER_QUESTION_TWO:
+        case VEHICLE_RUN_OWNER_NONE:
+        default:
+            break;
+    }
+
+    if(timed_run != NULL)
+    {
+        if((timed_run->state == VEHICLE_RUN_RUNNING) &&
+           ((HAL_GetTick() - timed_run->start_tick) >= timed_stop_ms))
         {
             interrupt_state = __get_PRIMASK();
             __disable_irq();
-            Vehicle_Run_Brake_And_Latch(&question_four_run);
+            Vehicle_Run_Brake_And_Latch(timed_run);
 
             if(interrupt_state == 0U)
             {
@@ -323,4 +420,24 @@ unsigned char Vehicle_Run_Question4_Get_State(void)
 uint32_t Vehicle_Run_Question4_Get_Elapsed_Ms(void)
 {
     return Vehicle_Run_Get_Context_Elapsed_Ms(&question_four_run);
+}
+
+unsigned char Vehicle_Run_Question5_Get_State(void)
+{
+    return (question_five_run.state == VEHICLE_RUN_RUNNING) ? 1U : 0U;
+}
+
+uint32_t Vehicle_Run_Question5_Get_Elapsed_Ms(void)
+{
+    return Vehicle_Run_Get_Context_Elapsed_Ms(&question_five_run);
+}
+
+unsigned char Vehicle_Run_Question6_Get_State(void)
+{
+    return (question_six_run.state == VEHICLE_RUN_RUNNING) ? 1U : 0U;
+}
+
+uint32_t Vehicle_Run_Question6_Get_Elapsed_Ms(void)
+{
+    return Vehicle_Run_Get_Context_Elapsed_Ms(&question_six_run);
 }

@@ -4,10 +4,11 @@
 #include "MyDefine.h"
 
 /*
- * 题二、题四车辆运行管理接口。
+ * 题二、题四、题五、题六车辆运行管理接口。
  *
- * 题二负责累计航向和灰度停车判定，题四负责 7 秒停车判定。两题分别保存
- * 状态和计时，并互斥使用电机及 PID；OLED 页面只查询状态和时间。
+ * 题二负责累计航向和灰度停车判定，题四负责 7 秒停车判定，题五和题六
+ * 分别负责 28 秒停车判定。四道题分别保存状态和计时，并互斥使用电机及 PID；
+ * OLED 页面只查询状态和时间。
  */
 
 /*
@@ -45,5 +46,29 @@ unsigned char Vehicle_Run_Question4_Get_State(void);
 
 /* 返回题四本轮运行时间，单位为 ms；停车后返回锁存值。 */
 uint32_t Vehicle_Run_Question4_Get_Elapsed_Ms(void);
+
+/* 题五启动：应用 75 rpm 基础目标值，并从 0 开始计时。 */
+void Vehicle_Run_Question5_Start(void);
+
+/* 题五复位：停车、清零计时，并重新设置 75 rpm 基础目标值。 */
+void Vehicle_Run_Question5_Reset(void);
+
+/* 返回 1 表示题五正在运行，返回 0 表示暂停。 */
+unsigned char Vehicle_Run_Question5_Get_State(void);
+
+/* 返回题五本轮运行时间，单位为 ms；停车后返回锁存值。 */
+uint32_t Vehicle_Run_Question5_Get_Elapsed_Ms(void);
+
+/* 题六启动：应用 75 rpm 基础目标值，并从 0 开始计时。 */
+void Vehicle_Run_Question6_Start(void);
+
+/* 题六复位：停车、清零计时，并重新设置 75 rpm 基础目标值。 */
+void Vehicle_Run_Question6_Reset(void);
+
+/* 返回 1 表示题六正在运行，返回 0 表示暂停。 */
+unsigned char Vehicle_Run_Question6_Get_State(void);
+
+/* 返回题六本轮运行时间，单位为 ms；停车后返回锁存值。 */
+uint32_t Vehicle_Run_Question6_Get_Elapsed_Ms(void);
 
 #endif
