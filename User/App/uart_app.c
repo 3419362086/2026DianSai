@@ -26,6 +26,13 @@ typedef struct
 #define UART5_PWM_MEASURE_SETTLE_MS 2000U
 #define UART5_PWM_MEASURE_SAMPLE_MS 2000U
 
+#define UART6_FRAME_DATA_MAX_LENGTH 64U
+/* 定点单位与协议小数位数一致，避免在通信路径中解析浮点文本。 */
+#define UART6_POSITION_LIMIT_CENTI_CM 1250U
+#define UART6_CONFIDENCE_MAX_MILLI 1000U
+#define UART6_ERROR_REPORT_INTERVAL_MS 1000U
+#define UART6_FORWARD_TO_WIRELESS 1U
+
 typedef enum
 {
   UART5_PWM_MEASURE_IDLE = 0,
@@ -45,10 +52,49 @@ typedef struct
   int32_t right_start_count;
 } Uart5_PwmMeasure_t;
 
+typedef enum
+{
+  UART6_WAIT_FIRST_HASH = 0,
+  UART6_WAIT_SECOND_HASH,
+  UART6_READ_FRAME_DATA,
+  UART6_WAIT_SECOND_DOLLAR,
+  UART6_WAIT_RESTART_HASH
+} Uart6_FrameState_t;
+
+typedef enum
+{
+  UART6_FRAME_VALID = 0,
+  UART6_FRAME_FORMAT_ERROR,
+  UART6_FRAME_CHECKSUM_ERROR
+} Uart6_FrameResult_t;
+
+typedef struct
+{
+  int16_t position_centi_cm;
+  uint32_t timestamp_ms;
+  uint16_t confidence_milli;
+  uint8_t detected;
+} Uart6_VisionFrame_t;
+
+typedef struct
+{
+  uint32_t framing_errors;
+  uint32_t overflow_errors;
+  uint32_t checksum_errors;
+  uint32_t content_errors;
+} Uart6_ParserStats_t;
+
 static char uart5_command_line[BUFFER_SIZE];
 static uint16_t uart5_command_line_length;
 static uint8_t uart5_command_line_overflow;
 static Uart5_PwmMeasure_t uart5_pwm_measure;
+
+static char uart6_frame_data[UART6_FRAME_DATA_MAX_LENGTH + 1U];
+static uint16_t uart6_frame_data_length;
+static Uart6_FrameState_t uart6_frame_state;
+static Uart6_ParserStats_t uart6_parser_stats;
+static Uart6_ParserStats_t uart6_reported_stats;
+static uint32_t uart6_last_error_report_ms;
 
 static const Uart5_PidCommandContext_t uart5_pid_left_context =
 {
@@ -553,6 +599,362 @@ static void Uart5_Process_Line(void)
   uart5_command_line_overflow = 0U;
 }
 
+static uint8_t Uart6_Parse_Uint32(const char *text, uint32_t *value_out)
+{
+  uint32_t value = 0U;
+  uint32_t digit;
+
+  if (text[0] == '\0') return 0U;
+
+  while (*text != '\0')
+  {
+    if (*text < '0' || *text > '9') return 0U;
+
+    digit = (uint32_t)(*text - '0');
+    if (value > (0xFFFFFFFFUL - digit) / 10U) return 0U;
+
+    value = value * 10U + digit;
+    text++;
+  }
+
+  *value_out = value;
+  return 1U;
+}
+
+static uint8_t Uart6_Parse_Position(const char *text, int16_t *position_out)
+{
+  uint32_t integer_part = 0U;
+  uint32_t scaled_position;
+  uint8_t integer_digits = 0U;
+  int32_t sign = 1;
+
+  if (*text == '-' || *text == '+')
+  {
+    if (*text == '-') sign = -1;
+    text++;
+  }
+
+  while (*text >= '0' && *text <= '9')
+  {
+    integer_part = integer_part * 10U + (uint32_t)(*text - '0');
+    if (integer_part > UART6_POSITION_LIMIT_CENTI_CM / 100U) return 0U;
+    integer_digits++;
+    text++;
+  }
+
+  if (integer_digits == 0U || *text != '.') return 0U;
+  text++;
+
+  if (strlen(text) != 2U ||
+      text[0] < '0' || text[0] > '9' ||
+      text[1] < '0' || text[1] > '9' ||
+      text[2] != '\0')
+  {
+    return 0U;
+  }
+
+  scaled_position = integer_part * 100U +
+                    (uint32_t)(text[0] - '0') * 10U +
+                    (uint32_t)(text[1] - '0');
+  if (scaled_position > UART6_POSITION_LIMIT_CENTI_CM) return 0U;
+
+  *position_out = (int16_t)(sign * (int32_t)scaled_position);
+  return 1U;
+}
+
+static uint8_t Uart6_Parse_Confidence(const char *text,
+                                      uint16_t *confidence_out)
+{
+  uint32_t scaled_confidence;
+
+  if (strlen(text) != 5U ||
+      (text[0] != '0' && text[0] != '1') || text[1] != '.' ||
+      text[2] < '0' || text[2] > '9' ||
+      text[3] < '0' || text[3] > '9' ||
+      text[4] < '0' || text[4] > '9' || text[5] != '\0')
+  {
+    return 0U;
+  }
+
+  scaled_confidence = (uint32_t)(text[0] - '0') * 1000U +
+                      (uint32_t)(text[2] - '0') * 100U +
+                      (uint32_t)(text[3] - '0') * 10U +
+                      (uint32_t)(text[4] - '0');
+  if (scaled_confidence > UART6_CONFIDENCE_MAX_MILLI) return 0U;
+
+  *confidence_out = (uint16_t)scaled_confidence;
+  return 1U;
+}
+
+static uint8_t Uart6_Hex_Nibble(char value)
+{
+  if (value >= '0' && value <= '9') return (uint8_t)(value - '0');
+  if (value >= 'A' && value <= 'F') return (uint8_t)(value - 'A' + 10);
+  return 0xFFU;
+}
+
+static Uart6_FrameResult_t Uart6_Parse_Frame(char *frame_data,
+                                             uint16_t frame_length,
+                                             Uart6_VisionFrame_t *vision_frame)
+{
+  char *fields[5];
+  uint16_t checksum_separator = 0xFFFFU;
+  uint16_t i;
+  uint8_t comma_count = 0U;
+  uint8_t field_count = 1U;
+  uint8_t checksum = 0U;
+  uint8_t checksum_high;
+  uint8_t checksum_low;
+  uint8_t received_checksum;
+
+  for (i = 0U; i < frame_length; i++)
+  {
+    if (frame_data[i] == ',')
+    {
+      comma_count++;
+      checksum_separator = i;
+    }
+  }
+
+  if (comma_count != 5U || checksum_separator == 0xFFFFU ||
+      checksum_separator + 3U != frame_length)
+  {
+    return UART6_FRAME_FORMAT_ERROR;
+  }
+
+  checksum_high = Uart6_Hex_Nibble(frame_data[checksum_separator + 1U]);
+  checksum_low = Uart6_Hex_Nibble(frame_data[checksum_separator + 2U]);
+  if (checksum_high == 0xFFU || checksum_low == 0xFFU)
+  {
+    return UART6_FRAME_FORMAT_ERROR;
+  }
+  received_checksum = (uint8_t)((checksum_high << 4U) | checksum_low);
+
+  for (i = 0U; i < checksum_separator; i++)
+  {
+    checksum ^= (uint8_t)frame_data[i];
+  }
+  if (checksum != received_checksum) return UART6_FRAME_CHECKSUM_ERROR;
+
+  fields[0] = frame_data;
+  frame_data[checksum_separator] = '\0';
+  for (i = 0U; i < checksum_separator; i++)
+  {
+    if (frame_data[i] == ',')
+    {
+      frame_data[i] = '\0';
+      if (field_count >= 5U) return UART6_FRAME_FORMAT_ERROR;
+      fields[field_count++] = &frame_data[i + 1U];
+    }
+  }
+
+  if (field_count != 5U || strcmp(fields[0], "BALL") != 0)
+  {
+    return UART6_FRAME_FORMAT_ERROR;
+  }
+
+  if (Uart6_Parse_Position(fields[1], &vision_frame->position_centi_cm) == 0U ||
+      Uart6_Parse_Uint32(fields[2], &vision_frame->timestamp_ms) == 0U ||
+      Uart6_Parse_Confidence(fields[4], &vision_frame->confidence_milli) == 0U)
+  {
+    return UART6_FRAME_FORMAT_ERROR;
+  }
+
+  if (fields[3][0] == '0' && fields[3][1] == '\0')
+  {
+    vision_frame->detected = 0U;
+  }
+  else if (fields[3][0] == '1' && fields[3][1] == '\0')
+  {
+    vision_frame->detected = 1U;
+  }
+  else
+  {
+    return UART6_FRAME_FORMAT_ERROR;
+  }
+
+  if (vision_frame->detected == 0U &&
+      (vision_frame->position_centi_cm != 0 ||
+       vision_frame->confidence_milli != 0U))
+  {
+    return UART6_FRAME_FORMAT_ERROR;
+  }
+
+  return UART6_FRAME_VALID;
+}
+
+static void Uart6_Reset_Frame_Parser(void)
+{
+  uart6_frame_state = UART6_WAIT_FIRST_HASH;
+  uart6_frame_data_length = 0U;
+}
+
+static void Uart6_Start_Frame(void)
+{
+  uart6_frame_state = UART6_READ_FRAME_DATA;
+  uart6_frame_data_length = 0U;
+}
+
+static void Uart6_Handle_Complete_Frame(void)
+{
+  Uart6_VisionFrame_t vision_frame;
+  Uart6_FrameResult_t result;
+  uint32_t absolute_position;
+  const char *position_sign;
+
+  uart6_frame_data[uart6_frame_data_length] = '\0';
+  result = Uart6_Parse_Frame(uart6_frame_data,
+                             uart6_frame_data_length,
+                             &vision_frame);
+  if (result == UART6_FRAME_CHECKSUM_ERROR)
+  {
+    uart6_parser_stats.checksum_errors++;
+    return;
+  }
+  if (result != UART6_FRAME_VALID)
+  {
+    uart6_parser_stats.content_errors++;
+    return;
+  }
+
+#if UART6_FORWARD_TO_WIRELESS
+  if (vision_frame.position_centi_cm < 0)
+  {
+    position_sign = "-";
+    absolute_position = (uint32_t)(-(int32_t)vision_frame.position_centi_cm);
+  }
+  else
+  {
+    position_sign = "";
+    absolute_position = (uint32_t)vision_frame.position_centi_cm;
+  }
+
+  Uart_Printf(wireless_UART,
+              "CV,%s%lu.%02lu,%lu,%u,%lu.%03lu\r\n",
+              position_sign,
+              (unsigned long)(absolute_position / 100U),
+              (unsigned long)(absolute_position % 100U),
+              (unsigned long)vision_frame.timestamp_ms,
+              (unsigned int)vision_frame.detected,
+              (unsigned long)(vision_frame.confidence_milli / 1000U),
+              (unsigned long)(vision_frame.confidence_milli % 1000U));
+#endif
+}
+
+static void Uart6_Process_Byte(uint8_t byte)
+{
+  switch (uart6_frame_state)
+  {
+    case UART6_WAIT_FIRST_HASH:
+      if (byte == '#') uart6_frame_state = UART6_WAIT_SECOND_HASH;
+      break;
+
+    case UART6_WAIT_SECOND_HASH:
+      if (byte == '#')
+      {
+        Uart6_Start_Frame();
+      }
+      else
+      {
+        uart6_frame_state = UART6_WAIT_FIRST_HASH;
+      }
+      break;
+
+    case UART6_READ_FRAME_DATA:
+      if (byte == '$')
+      {
+        uart6_frame_state = UART6_WAIT_SECOND_DOLLAR;
+      }
+      else if (byte == '#')
+      {
+        uart6_frame_state = UART6_WAIT_RESTART_HASH;
+      }
+      else if (byte < 0x20U || byte > 0x7EU)
+      {
+        uart6_parser_stats.framing_errors++;
+        Uart6_Reset_Frame_Parser();
+      }
+      else if (uart6_frame_data_length >= UART6_FRAME_DATA_MAX_LENGTH)
+      {
+        uart6_parser_stats.overflow_errors++;
+        Uart6_Reset_Frame_Parser();
+      }
+      else
+      {
+        uart6_frame_data[uart6_frame_data_length++] = (char)byte;
+      }
+      break;
+
+    case UART6_WAIT_SECOND_DOLLAR:
+      if (byte == '$')
+      {
+        Uart6_Handle_Complete_Frame();
+        Uart6_Reset_Frame_Parser();
+      }
+      else
+      {
+        uart6_parser_stats.framing_errors++;
+        uart6_frame_data_length = 0U;
+        uart6_frame_state = (byte == '#') ?
+                            UART6_WAIT_SECOND_HASH : UART6_WAIT_FIRST_HASH;
+      }
+      break;
+
+    case UART6_WAIT_RESTART_HASH:
+      uart6_parser_stats.framing_errors++;
+      if (byte == '#')
+      {
+        Uart6_Start_Frame();
+      }
+      else
+      {
+        Uart6_Reset_Frame_Parser();
+      }
+      break;
+
+    default:
+      Uart6_Reset_Frame_Parser();
+      break;
+  }
+}
+
+static void Uart6_Report_Parser_Errors(void)
+{
+  uint32_t now_ms = HAL_GetTick();
+
+  if (uart6_parser_stats.framing_errors == uart6_reported_stats.framing_errors &&
+      uart6_parser_stats.overflow_errors == uart6_reported_stats.overflow_errors &&
+      uart6_parser_stats.checksum_errors == uart6_reported_stats.checksum_errors &&
+      uart6_parser_stats.content_errors == uart6_reported_stats.content_errors)
+  {
+    return;
+  }
+
+  if ((uint32_t)(now_ms - uart6_last_error_report_ms) <
+      UART6_ERROR_REPORT_INTERVAL_MS)
+  {
+    return;
+  }
+
+  Uart_Printf(wireless_UART,
+              "CV_ERR,framing=%lu,overflow=%lu,checksum=%lu,content=%lu\r\n",
+              (unsigned long)uart6_parser_stats.framing_errors,
+              (unsigned long)uart6_parser_stats.overflow_errors,
+              (unsigned long)uart6_parser_stats.checksum_errors,
+              (unsigned long)uart6_parser_stats.content_errors);
+  uart6_reported_stats = uart6_parser_stats;
+  uart6_last_error_report_ms = now_ms;
+}
+
+static void Uart6_Protocol_Init(void)
+{
+  memset(uart6_frame_data, 0, sizeof(uart6_frame_data));
+  memset(&uart6_parser_stats, 0, sizeof(uart6_parser_stats));
+  memset(&uart6_reported_stats, 0, sizeof(uart6_reported_stats));
+  uart6_last_error_report_ms = HAL_GetTick();
+  Uart6_Reset_Frame_Parser();
+}
+
 void Uart_Init(void)
 {
   Uart_Printf(DEBUG_UART, "Uart_Init ......\r\n");
@@ -582,7 +984,10 @@ void Uart_Init(void)
   __HAL_DMA_DISABLE_IT(&hdma_uart5_rx, DMA_IT_HT); // 关闭 DMA 的"半满中断"功能
   
   /* 串口 6 */
-  rt_ringbuffer_init(&uart6_ring_buffer, uart6_ring_buffer_input, BUFFER_SIZE);
+  Uart6_Protocol_Init();
+  rt_ringbuffer_init(&uart6_ring_buffer,
+                     uart6_ring_buffer_input,
+                     UART6_RING_BUFFER_SIZE);
   
   HAL_UARTEx_ReceiveToIdle_DMA(&huart6, uart6_rx_dma_buffer, BUFFER_SIZE); // 启动读取中断
   __HAL_DMA_DISABLE_IT(&hdma_usart6_rx, DMA_IT_HT); // 关闭 DMA 的"半满中断"功能
@@ -689,16 +1094,24 @@ void Uart5_Task(void)
 void Uart6_Task(void)
 {
   uint16_t uart_data_len = rt_ringbuffer_data_len(&uart6_ring_buffer);
-  if(uart_data_len > 0)
+  uint16_t bytes_read;
+  uint16_t i;
+
+  /* 10 ms内最多读256字节，高于115200 8N1的最大输入量，同时保证任务有界。 */
+  if (uart_data_len > (uint16_t)sizeof(uart6_data_buffer))
   {
-    rt_ringbuffer_get(&uart6_ring_buffer, uart6_data_buffer, uart_data_len);
-    uart6_data_buffer[uart_data_len] = '\0';
-    /* 数据解析 */
-    Uart_Printf(DEBUG_UART, "UART6 Ringbuffer:%s\r\n", uart6_data_buffer);
-    Uart_Printf(&huart6, "UART6 Ringbuffer:%s\r\n", uart6_data_buffer);
-    
-    memset(uart6_data_buffer, 0, uart_data_len);
+    uart_data_len = (uint16_t)sizeof(uart6_data_buffer);
   }
+
+  bytes_read = (uint16_t)rt_ringbuffer_get(&uart6_ring_buffer,
+                                            uart6_data_buffer,
+                                            uart_data_len);
+  for (i = 0U; i < bytes_read; i++)
+  {
+    Uart6_Process_Byte(uart6_data_buffer[i]);
+  }
+
+  Uart6_Report_Parser_Errors();
 }
 
 void System_State_Uart_Print(void)
