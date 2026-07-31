@@ -566,6 +566,17 @@
         }
       },
       {
+        "name": "题三",
+        "type": "展示页面",
+        "properties": {
+          "变量名": "question_three_run_timer_page",
+          "周期": "100",
+          "周期回调函数": true,
+          "进入回调函数": true,
+          "退出回调函数": false
+        }
+      },
+      {
         "name": "题四",
         "type": "展示页面",
         "properties": {

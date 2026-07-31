@@ -58,6 +58,16 @@ void my_handle_key_event(struct ebtn_btn *btn, ebtn_evt_t evt) {
 
             break;
         case EBTN_EVT_KEEPALIVE: // 保持活动/长按事件 (按下持续时间超过阈值后，按周期触发)
+            /*
+             * 展示页的按键承担启动、暂停和复位命令，只能按下沿触发一次。
+             * 普通菜单仍保留长按连发，便于移动光标和调整参数。
+             */
+            if((easy_menu.current_page != NULL) &&
+               (easy_menu.current_page->type == SHOW_PAGE))
+            {
+                break;
+            }
+
             switch(key_id)
             {
               case 1:
@@ -89,6 +99,5 @@ void my_handle_key_event(struct ebtn_btn *btn, ebtn_evt_t evt) {
 
     }
 }
-
 
 
