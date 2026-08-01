@@ -2,7 +2,7 @@
 #include "Easy_Menu_User.h"
 #include "ball_control.h"
 
-#define VEHICLE_RUN_QUESTION_TWO_BASE_RPM   (90)
+#define VEHICLE_RUN_QUESTION_TWO_BASE_RPM   (100)
 #define VEHICLE_RUN_QUESTION_FOUR_BASE_RPM  (85)
 #define VEHICLE_RUN_QUESTION_FIVE_BASE_RPM  (75)
 #define VEHICLE_RUN_QUESTION_SIX_BASE_RPM   (75)

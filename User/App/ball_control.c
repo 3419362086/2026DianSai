@@ -22,14 +22,23 @@
 #define BALL_CONTROL_OBSERVER_BETA                    0.30f /* 提高速度对位置残差的跟随，降低动态滞后。 */
 #define BALL_CONTROL_ACCELERATION_FILTER_GAIN          0.20f /* 加速度一阶低通系数。 */
 
-/*
- * 第 4 阶段速度中环手动调参区：修改后重新编译下载，不通过串口改参数。
- * 首轮保持 v_ref=0、Ka=0，只验证零速制动方向；随后依次测试 +2、-2 cm/s。
- * Kv 的单位为 (deg/s)/(cm/s)，Ka 的单位为 (deg/s)/(cm/s^2)。
- */
-#define BALL_CONTROL_VELOCITY_TARGET_CM_S               0.0f
+/* 位置外环首版只使用 P 项，并限制其交给速度中环的目标速度。 */
+#define BALL_CONTROL_POSITION_KP                         0.75f
+#define BALL_CONTROL_VELOCITY_LIMIT_CM_S                  2.0f
+#define BALL_CONTROL_POSITION_HOLD_TOLERANCE_CM            0.5f
+
+/* 速度中环沿用零速扰动测试得到的参数。 */
 #define BALL_CONTROL_VELOCITY_KV                         0.20f
-#define BALL_CONTROL_ACCELERATION_KA                      0.20f
+#define BALL_CONTROL_ACCELERATION_KA                      0.25f
+
+/* 低速且未进入保持区时，用最小有效整数 RPM 越过命令量化死区。 */
+#define BALL_CONTROL_MIN_CRAWL_MAX_SPEED_CM_S              0.3f
+#define BALL_CONTROL_MIN_CRAWL_MOTOR_RPM                   1.0f
+#define BALL_CONTROL_MIN_CRAWL_ANGLE_LIMIT_DEG              2.5f
+
+/* 小球运动后主动卸载与运动同向的蓄积倾角，减轻静摩擦释放造成的过冲。 */
+#define BALL_CONTROL_ROD_RETURN_KTHETA_S_INV               4.0f
+#define BALL_CONTROL_ROD_RETURN_MIN_SPEED_CM_S              0.3f
 
 /* 仅保护 ZDT 命令的 uint16_t 速度字段，不是机械最大转速限制。 */
 #define BALL_CONTROL_MOTOR_PROTOCOL_MAX_RPM          65535.0f
@@ -70,10 +79,13 @@ typedef struct
   Ball_Vision_Sample_t latest_vision;     /* Push 接口复制得到的最新帧。 */
   Ball_Observer_t observer;               /* 小球位置、速度和加速度估计。 */
   float target_position_cm;               /* 位置外环目标，单位 cm。 */
+  float velocity_reference_cm_s;          /* 位置外环输出的目标速度。 */
   float rod_angle_estimate_deg;           /* 由目标 RPM 积分得到的摆杆角度。 */
   int32_t commanded_motor_rpm;            /* 本模块最后发给 Y 电机的目标转速。 */
   uint32_t last_actuator_update_ms;        /* 上次角度积分使用的 HAL tick。 */
   uint32_t last_telemetry_ms;              /* 遥测限频时间基准。 */
+  uint32_t vision_push_count;              /* 协议解析后提交给控制模块的视觉帧数。 */
+  uint32_t vision_update_count;            /* 观测器成功初始化或融合的视觉帧数。 */
   bool start_requested;                    /* 上层已经请求启动。 */
   bool vision_sample_pending;              /* Task 尚未消费最新视觉帧。 */
   bool vision_frame_received;              /* 至少收到过一帧合法协议数据。 */
@@ -137,6 +149,7 @@ static bool Ball_Control_Process_Vision(void)
       if (!ball_control.observer.initialized)
       {
         Ball_Control_Initialize_Observer(&sample);
+        ball_control.vision_update_count++;
         return true;
       }
       else
@@ -187,6 +200,7 @@ static bool Ball_Control_Process_Vision(void)
             ball_control.observer.last_camera_timestamp_ms = sample.timestamp_ms;
             ball_control.observer.last_measurement_position_cm = measurement_cm;
             ball_control.observer.valid = true;
+            ball_control.vision_update_count++;
             return true;
           }
         }
@@ -259,13 +273,37 @@ static void Ball_Control_Send_Motor_Rpm(int32_t requested_motor_rpm)
   ball_control.commanded_motor_rpm = motor_rpm;
 }
 
+static void Ball_Control_Run_Position_Loop(void)
+{
+  float position_error_cm;
+  float velocity_reference_cm_s;
+
+  position_error_cm = ball_control.target_position_cm -
+                      ball_control.observer.position_cm;
+  velocity_reference_cm_s = BALL_CONTROL_POSITION_KP * position_error_cm;
+
+  if (velocity_reference_cm_s > BALL_CONTROL_VELOCITY_LIMIT_CM_S)
+  {
+    velocity_reference_cm_s = BALL_CONTROL_VELOCITY_LIMIT_CM_S;
+  }
+  else if (velocity_reference_cm_s < -BALL_CONTROL_VELOCITY_LIMIT_CM_S)
+  {
+    velocity_reference_cm_s = -BALL_CONTROL_VELOCITY_LIMIT_CM_S;
+  }
+
+  ball_control.velocity_reference_cm_s = velocity_reference_cm_s;
+}
+
 static void Ball_Control_Run_Velocity_Loop(void)
 {
+  float position_error_cm;
   float velocity_error_cm_s;
   float rod_angular_velocity_reference_deg_s;
   float motor_rpm;
 
-  velocity_error_cm_s = BALL_CONTROL_VELOCITY_TARGET_CM_S -
+  position_error_cm = ball_control.target_position_cm -
+                      ball_control.observer.position_cm;
+  velocity_error_cm_s = ball_control.velocity_reference_cm_s -
                         ball_control.observer.velocity_cm_s;
 
   /*
@@ -277,9 +315,54 @@ static void Ball_Control_Run_Velocity_Loop(void)
       BALL_CONTROL_ACCELERATION_KA *
           ball_control.observer.acceleration_cm_s2;
 
+  /*
+   * 静摩擦会使摆杆先积累较大倾角，小球启动后该倾角会继续加速小球。
+   * 仅当倾角与速度同向时主动回平；二者反向说明摆杆正在制动，不能卸载。
+   */
+  if ((Ball_Control_Abs_Float(ball_control.observer.velocity_cm_s) >
+       BALL_CONTROL_ROD_RETURN_MIN_SPEED_CM_S) &&
+      ((ball_control.rod_angle_estimate_deg *
+        ball_control.observer.velocity_cm_s) > 0.0f))
+  {
+    rod_angular_velocity_reference_deg_s -=
+        BALL_CONTROL_ROD_RETURN_KTHETA_S_INV *
+        ball_control.rod_angle_estimate_deg;
+  }
+
   /* 已确认 1 motor RPM = 0.6 deg/s rod，故反算电机目标转速。 */
   motor_rpm = rod_angular_velocity_reference_deg_s /
               BALL_CONTROL_MOTOR_RPM_TO_ROD_DEG_S;
+
+  /*
+   * ZDT 速度协议只接受整数 RPM。小于 0.5 RPM 的连续控制量会被舍入为零，
+   * 使小位置误差永久落入死区。仅在小球低速且位于保持区外时，沿位置
+   * 误差方向输出 1 RPM。爬行倾角达到 +/-2.5 deg 后禁止继续向外积累，
+   * 但始终允许回平方向命令，避免钢球突然释放时储存过多势能。
+   */
+  if ((Ball_Control_Abs_Float(ball_control.observer.velocity_cm_s) <
+       BALL_CONTROL_MIN_CRAWL_MAX_SPEED_CM_S) &&
+      (Ball_Control_Abs_Float(position_error_cm) >
+       BALL_CONTROL_POSITION_HOLD_TOLERANCE_CM))
+  {
+    if (Ball_Control_Abs_Float(motor_rpm) <
+        BALL_CONTROL_MIN_CRAWL_MOTOR_RPM)
+    {
+      motor_rpm = (position_error_cm > 0.0f) ?
+                      BALL_CONTROL_MIN_CRAWL_MOTOR_RPM :
+                      -BALL_CONTROL_MIN_CRAWL_MOTOR_RPM;
+    }
+
+    if (((ball_control.rod_angle_estimate_deg >=
+          BALL_CONTROL_MIN_CRAWL_ANGLE_LIMIT_DEG) &&
+         (motor_rpm > 0.0f)) ||
+        ((ball_control.rod_angle_estimate_deg <=
+          -BALL_CONTROL_MIN_CRAWL_ANGLE_LIMIT_DEG) &&
+         (motor_rpm < 0.0f)))
+    {
+      motor_rpm = 0.0f;
+    }
+  }
+
   Ball_Control_Send_Motor_Rpm(Ball_Control_Convert_Motor_Rpm(motor_rpm));
 }
 
@@ -392,20 +475,24 @@ static void Ball_Control_Report_Telemetry(uint32_t now_ms)
   ball_control.last_telemetry_ms = now_ms;
 
   /*
-   * 字段：state, vision_initialized, zero_valid, x_ref, x, v, a, angle,
-   * motor_rpm。没有新帧时重复输出最后一次融合结果，不做主控时间外推。
+   * 字段：state, vision_initialized, zero_valid, x_ref, x, v_ref, v, a,
+   * angle, motor_rpm, vision_push_count, vision_update_count。
+   * 没有新帧时仍重复最后一次融合结果，但两个计数不会增长。
    */
   Uart_Printf(&huart1,
-              "BC,%u,%u,%u,%.2f,%.2f,%.2f,%.2f,%.2f,%ld\r\n",
+              "BC,%u,%u,%u,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%ld,%lu,%lu\r\n",
               (unsigned int)ball_control.state,
               ball_control.observer.valid ? 1U : 0U,
               ball_control.rod_zero_valid ? 1U : 0U,
               ball_control.target_position_cm,
               ball_control.observer.position_cm,
+              ball_control.velocity_reference_cm_s,
               ball_control.observer.velocity_cm_s,
               ball_control.observer.acceleration_cm_s2,
               ball_control.rod_angle_estimate_deg,
-              (long)ball_control.commanded_motor_rpm);
+              (long)ball_control.commanded_motor_rpm,
+              (unsigned long)ball_control.vision_push_count,
+              (unsigned long)ball_control.vision_update_count);
 #else
   (void)now_ms;
 #endif
@@ -423,7 +510,7 @@ void Ball_Control_Task(void)
 
   /*
    * 顺序不能随意调整：先累计上一周期执行器运动，再消费视觉并更新状态；
-   * 之后处理外部违规命令和待发送停止命令，最后才允许新视觉帧触发中环。
+   * 之后处理外部违规命令和待发送停止命令，最后才允许新视觉帧触发两级外环。
    * 所有阻塞 UART 均留在主循环，不在 USART6 接收路径中驱动电机。
    */
   Ball_Control_Update_Actuator_Estimate(now_ms);
@@ -441,6 +528,7 @@ void Ball_Control_Task(void)
 
   if ((ball_control.state == BALL_CONTROL_RUNNING) && observer_updated)
   {
+    Ball_Control_Run_Position_Loop();
     Ball_Control_Run_Velocity_Loop();
   }
 
@@ -487,6 +575,7 @@ void Ball_Control_Stop(void)
   }
 
   ball_control.start_requested = false;
+  ball_control.velocity_reference_cm_s = 0.0f;
   ball_control.stop_command_pending = true;
   ball_control.state = BALL_CONTROL_STOPPED;
 }
@@ -520,6 +609,7 @@ void Ball_Control_Push_Vision(const Ball_Vision_Sample_t *sample)
 
   /* Push 和 Task 当前都在协作式主循环中运行，不存在 ISR 并发写入。 */
   ball_control.latest_vision = *sample;
+  ball_control.vision_push_count++;
   ball_control.vision_sample_pending = true;
   ball_control.vision_frame_received = true;
 }
