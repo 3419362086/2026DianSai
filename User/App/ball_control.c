@@ -27,7 +27,7 @@
  * 首轮保持 v_ref=0、Ka=0，只验证零速制动方向；随后依次测试 +2、-2 cm/s。
  * Kv 的单位为 (deg/s)/(cm/s)，Ka 的单位为 (deg/s)/(cm/s^2)。
  */
-#define BALL_CONTROL_VELOCITY_TARGET_CM_S              -2.0f
+#define BALL_CONTROL_VELOCITY_TARGET_CM_S               0.0f
 #define BALL_CONTROL_VELOCITY_KV                         0.20f
 #define BALL_CONTROL_ACCELERATION_KA                      0.20f
 
