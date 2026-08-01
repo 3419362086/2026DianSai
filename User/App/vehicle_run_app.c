@@ -1,5 +1,6 @@
 #include "vehicle_run_app.h"
 #include "Easy_Menu_User.h"
+#include "ball_control.h"
 
 #define VEHICLE_RUN_QUESTION_TWO_BASE_RPM   (90)
 #define VEHICLE_RUN_QUESTION_FOUR_BASE_RPM  (85)
@@ -207,10 +208,15 @@ static void Vehicle_Run_Start_Context(Vehicle_Run_Context_t *context,
         __enable_irq();
     }
 
-    /* 题二运行期间 Y 轴不得保留任何运动命令。 */
+    /* 题二禁止 Y 轴运动；题三至题六启动小球闭环。 */
     if(owner == VEHICLE_RUN_OWNER_QUESTION_TWO)
     {
+        Ball_Control_Stop();
         Emm_V5_Stop_Now(MOTOR_Y_UART, MOTOR_Y_ADDR, MOTOR_SYNC_FLAG);
+    }
+    else
+    {
+        Ball_Control_Start();
     }
 }
 
@@ -233,7 +239,8 @@ static void Vehicle_Run_Pause_Context(Vehicle_Run_Context_t *context,
         __enable_irq();
     }
 
-    /* 暂停只停止 Y 轴，不触发回零；复位命令由 Reset_Context 统一发送。 */
+    /* 暂停只停止小球闭环和 Y 轴，不触发回零。 */
+    Ball_Control_Stop();
     Emm_V5_Stop_Now(MOTOR_Y_UART, MOTOR_Y_ADDR, MOTOR_SYNC_FLAG);
 }
 
@@ -286,6 +293,7 @@ static void Vehicle_Run_Reset_Context(Vehicle_Run_Context_t *context,
                                  MOTOR_Y_ADDR,
                                  0,
                                  MOTOR_SYNC_FLAG);
+    Ball_Control_Reset();
 }
 
 static uint32_t Vehicle_Run_Get_Context_Elapsed_Ms(const Vehicle_Run_Context_t *context)
@@ -456,6 +464,10 @@ void Vehicle_Run_Task(void)
             {
                 __enable_irq();
             }
+
+            /* 定时结束后同时停止小球闭环，阻塞式命令留在主循环上下文。 */
+            Ball_Control_Stop();
+            Emm_V5_Stop_Now(MOTOR_Y_UART, MOTOR_Y_ADDR, MOTOR_SYNC_FLAG);
         }
         return;
     }

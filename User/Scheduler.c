@@ -1,4 +1,5 @@
 #include "Scheduler.h"
+#include "ball_control.h"
 
 // 任务结构体
 typedef struct {
@@ -28,6 +29,7 @@ static scheduler_task_t scheduler_task[] =
   {Uart4_Task, 10, 0},
   {Uart5_Task, 10, 0},
   {Uart6_Task, 10, 0},
+  {Ball_Control_Task, 10, 0},
   {System_State_Uart_Print, 800, 0},
 //  {Encoder_Task, 10, 0},
   {Gyroscope_Task, 100, 0},
@@ -42,6 +44,8 @@ static scheduler_task_t scheduler_task[] =
 void Scheduler_Init(void)
 {
   System_Init();
+  /* ZDT 初始化已经触发 Y 轴回零，从此刻开始等待机械回零完成。 */
+  Ball_Control_Init();
   // 计算任务数组的元素个数，并将结果存储在 task_num 中
   task_num = sizeof(scheduler_task) / sizeof(scheduler_task_t); // 数组大小 / 数组成员大小 = 数组元素个数
 }

@@ -1,5 +1,6 @@
 #include "uart_app.h"
 #include "Easy_Menu_User.h"
+#include "ball_control.h"
 
 typedef void (*Uart5_CommandHandler)(const char *line,
                                      const char *arguments,
@@ -67,14 +68,6 @@ typedef enum
   UART6_FRAME_FORMAT_ERROR,
   UART6_FRAME_CHECKSUM_ERROR
 } Uart6_FrameResult_t;
-
-typedef struct
-{
-  int16_t position_centi_cm;
-  uint32_t timestamp_ms;
-  uint16_t confidence_milli;
-  uint8_t detected;
-} Uart6_VisionFrame_t;
 
 typedef struct
 {
@@ -695,7 +688,7 @@ static uint8_t Uart6_Hex_Nibble(char value)
 
 static Uart6_FrameResult_t Uart6_Parse_Frame(char *frame_data,
                                              uint16_t frame_length,
-                                             Uart6_VisionFrame_t *vision_frame)
+                                             Ball_Vision_Sample_t *vision_frame)
 {
   char *fields[5];
   uint16_t checksum_separator = 0xFFFFU;
@@ -797,7 +790,7 @@ static void Uart6_Start_Frame(void)
 
 static void Uart6_Handle_Complete_Frame(void)
 {
-  Uart6_VisionFrame_t vision_frame;
+  Ball_Vision_Sample_t vision_frame;
   Uart6_FrameResult_t result;
 #if UART6_FORWARD_TO_WIRELESS
   uint32_t absolute_position;
@@ -818,6 +811,8 @@ static void Uart6_Handle_Complete_Frame(void)
     uart6_parser_stats.content_errors++;
     return;
   }
+
+  Ball_Control_Push_Vision(&vision_frame);
 
 #if UART6_FORWARD_TO_WIRELESS
   if (vision_frame.position_centi_cm < 0)
