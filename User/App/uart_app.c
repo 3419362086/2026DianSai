@@ -31,7 +31,7 @@ typedef struct
 #define UART6_POSITION_LIMIT_CENTI_CM 1250U
 #define UART6_CONFIDENCE_MAX_MILLI 1000U
 #define UART6_ERROR_REPORT_INTERVAL_MS 1000U
-#define UART6_FORWARD_TO_WIRELESS 1U
+#define UART6_FORWARD_TO_WIRELESS 0U /* 协议联调逐帧输出已停用。 */
 
 typedef enum
 {
@@ -799,8 +799,10 @@ static void Uart6_Handle_Complete_Frame(void)
 {
   Uart6_VisionFrame_t vision_frame;
   Uart6_FrameResult_t result;
+#if UART6_FORWARD_TO_WIRELESS
   uint32_t absolute_position;
   const char *position_sign;
+#endif
 
   uart6_frame_data[uart6_frame_data_length] = '\0';
   result = Uart6_Parse_Frame(uart6_frame_data,
@@ -829,7 +831,7 @@ static void Uart6_Handle_Complete_Frame(void)
     absolute_position = (uint32_t)vision_frame.position_centi_cm;
   }
 
-  Uart_Printf(wireless_UART,
+  Uart_Printf(DEBUG_UART,
               "CV,%s%lu.%02lu,%lu,%u,%lu.%03lu\r\n",
               position_sign,
               (unsigned long)(absolute_position / 100U),
