@@ -1029,13 +1029,11 @@ void Uart4_Task(void)
   uint16_t uart_data_len = rt_ringbuffer_data_len(&uart4_ring_buffer);
   if(uart_data_len > 0)
   {
-    rt_ringbuffer_get(&uart4_ring_buffer, uart4_data_buffer, uart_data_len);
-    uart4_data_buffer[uart_data_len] = '\0';
-    /* 数据解析 */
-    Uart_Printf(DEBUG_UART, "UART4 Ringbuffer:%s\r\n", uart4_data_buffer);
-    Uart_Printf(&huart4, "UART4 Ringbuffer:%s\r\n", uart4_data_buffer);
-    
-    memset(uart4_data_buffer, 0, uart_data_len);
+    /*
+     * UART4 接收的是 Y 电机二进制应答，不能按字符串输出，更不能回发给
+     * 电机。当前阶段尚未解析应答，只消费数据以避免接收环形缓冲区积满。
+     */
+    rt_ringbuffer_get(&uart4_ring_buffer, NULL, uart_data_len);
   }
 }
 

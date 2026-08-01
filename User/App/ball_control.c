@@ -9,9 +9,8 @@
 
 /* 已确认的机械、传动和视觉量程参数。 */
 #define BALL_CONTROL_POSITION_LIMIT_CM              12.5f  /* 摄像头坐标范围，单位 cm。 */
-#define BALL_CONTROL_ROD_ANGLE_LIMIT_DEG            15.0f  /* 只禁止继续向外，不禁止回中心。 */
+#define BALL_CONTROL_ROD_ANGLE_LIMIT_DEG             5.0f  /* 软件限位只禁止继续向外，不禁止回中心。 */
 #define BALL_CONTROL_MOTOR_RPM_TO_ROD_DEG_S          0.6f  /* 1 RPM 电机转速对应的摆杆角速度。 */
-#define BALL_CONTROL_HOMING_WAIT_MS                2000U   /* 回零命令发出后的最长机械运动时间。 */
 
 /*
  * 视觉观测器首版参数，当前只通过编译验证，必须根据 BC 遥测实测后再定稿。
@@ -20,7 +19,7 @@
  */
 #define BALL_CONTROL_VISION_MAX_SPEED_CM_S          200.0f /* 用于拒绝不合理的单帧位置跳变。 */
 #define BALL_CONTROL_OBSERVER_ALPHA                   0.75f /* 固定位置残差融合增益。 */
-#define BALL_CONTROL_OBSERVER_BETA                    0.10f /* 固定速度残差融合增益。 */
+#define BALL_CONTROL_OBSERVER_BETA                    0.30f /* 提高速度对位置残差的跟随，降低动态滞后。 */
 #define BALL_CONTROL_ACCELERATION_FILTER_GAIN          0.20f /* 加速度一阶低通系数。 */
 
 /*
@@ -28,9 +27,9 @@
  * 首轮保持 v_ref=0、Ka=0，只验证零速制动方向；随后依次测试 +2、-2 cm/s。
  * Kv 的单位为 (deg/s)/(cm/s)，Ka 的单位为 (deg/s)/(cm/s^2)。
  */
-#define BALL_CONTROL_VELOCITY_TARGET_CM_S               0.0f
-#define BALL_CONTROL_VELOCITY_KV                         1.0f
-#define BALL_CONTROL_ACCELERATION_KA                      0.0f
+#define BALL_CONTROL_VELOCITY_TARGET_CM_S              -2.0f
+#define BALL_CONTROL_VELOCITY_KV                         0.20f
+#define BALL_CONTROL_ACCELERATION_KA                      0.20f
 
 /* 仅保护 ZDT 命令的 uint16_t 速度字段，不是机械最大转速限制。 */
 #define BALL_CONTROL_MOTOR_PROTOCOL_MAX_RPM          65535.0f
@@ -44,8 +43,8 @@
  * 1. Y 轴电机正转时摆杆车尾侧升高，定义为摆杆正角度。
  * 2. 齿轮接触线速度近似相等，电机半径 2 cm、摆杆半径 20 cm，
  *    因此摆杆角速度为电机角速度的 0.1 倍，即 1 RPM = 0.6 deg/s。
- * 3. 摆杆机械范围和软件禁止继续向外的阈值均为 +/-15 deg。
- * 4. 摆杆回到水平零位的最长时间为 2 s，等待过程不得阻塞主循环。
+ * 3. 摆杆机械范围为 +/-15 deg，软件禁止继续向外的阈值为 +/-5 deg。
+ * 4. 复位键触发电机内部回零；用户确认杆已停止后按启动，不使用固定等待时间。
  * 5. 闭环运行期间 Y 轴命令只能由本模块产生，其他模块不得修改 Y 轴速度。
  *
  * 摆杆角度按以下公式对本模块最后发送的目标转速积分估算：
@@ -74,13 +73,13 @@ typedef struct
   float rod_angle_estimate_deg;           /* 由目标 RPM 积分得到的摆杆角度。 */
   int32_t commanded_motor_rpm;            /* 本模块最后发给 Y 电机的目标转速。 */
   uint32_t last_actuator_update_ms;        /* 上次角度积分使用的 HAL tick。 */
-  uint32_t homing_started_ms;              /* 2 s 非阻塞回零等待起点。 */
   uint32_t last_telemetry_ms;              /* 遥测限频时间基准。 */
   bool start_requested;                    /* 上层已经请求启动。 */
   bool vision_sample_pending;              /* Task 尚未消费最新视觉帧。 */
   bool vision_frame_received;              /* 至少收到过一帧合法协议数据。 */
   bool rod_zero_valid;                     /* 水平零位是否可信。 */
-  bool homing_in_progress;                 /* 当前是否处于非阻塞回零等待。 */
+  bool homing_in_progress;                 /* 复位已触发回零，正在等待用户按启动。 */
+  bool zero_after_start_stop;               /* 启动停止命令发出后再建立软件零位。 */
   bool stop_command_pending;               /* 主循环中待发送一次停止命令。 */
 } Ball_Control_Context_t;
 
@@ -98,7 +97,6 @@ static void Ball_Control_Clear_State(uint32_t now_ms)
   memset(&ball_control, 0, sizeof(ball_control));
   ball_control.state = BALL_CONTROL_STOPPED;
   ball_control.last_actuator_update_ms = now_ms;
-  ball_control.homing_started_ms = now_ms;
   ball_control.last_telemetry_ms = now_ms;
   ball_control.homing_in_progress = true;
 }
@@ -231,7 +229,7 @@ static void Ball_Control_Send_Motor_Rpm(int32_t requested_motor_rpm)
   uint16_t motor_rpm_magnitude;
   uint8_t motor_direction;
 
-  /* 到达 +/-15 deg 后只禁止继续向外，反向返回中心的命令仍然有效。 */
+  /* 到达软件角度边界后只禁止继续向外，反向返回中心的命令仍然有效。 */
   if (((ball_control.rod_angle_estimate_deg >=
         BALL_CONTROL_ROD_ANGLE_LIMIT_DEG) &&
        (motor_rpm > 0)) ||
@@ -271,11 +269,11 @@ static void Ball_Control_Run_Velocity_Loop(void)
                         ball_control.observer.velocity_cm_s;
 
   /*
-   * 正位置指向车尾。要使钢球向正方向加速，需要降低摆杆右端，因此前项
-   * 使用负号；Ka*a_est 与当前加速度反向作用，用于后续逐步增加制动阻尼。
+   * 实测视觉正方向指向车头。电机正转抬高车尾侧，使钢球向车头正方向
+   * 加速，因此 Kv 项与速度误差同号；Ka 项取反，用于抵消当前加速度。
    */
   rod_angular_velocity_reference_deg_s =
-      -BALL_CONTROL_VELOCITY_KV * velocity_error_cm_s +
+      BALL_CONTROL_VELOCITY_KV * velocity_error_cm_s -
       BALL_CONTROL_ACCELERATION_KA *
           ball_control.observer.acceleration_cm_s2;
 
@@ -293,15 +291,7 @@ static void Ball_Control_Update_Actuator_Estimate(uint32_t now_ms)
 
   if (ball_control.homing_in_progress)
   {
-    if ((uint32_t)(now_ms - ball_control.homing_started_ms) >=
-        BALL_CONTROL_HOMING_WAIT_MS)
-    {
-      ball_control.homing_in_progress = false;
-      ball_control.rod_zero_valid = true;
-      ball_control.rod_angle_estimate_deg = 0.0f;
-      ball_control.commanded_motor_rpm = 0;
-      ball_control.stop_command_pending = false;
-    }
+    /* 复位后的回零运动由电机内部执行，用户按启动前不进行角度积分。 */
     return;
   }
 
@@ -339,11 +329,20 @@ static void Ball_Control_Service_Stop_Command(void)
   Emm_V5_Stop_Now(MOTOR_Y_UART, MOTOR_Y_ADDR, MOTOR_SYNC_FLAG);
   ball_control.commanded_motor_rpm = 0;
   ball_control.stop_command_pending = false;
+
+  if (ball_control.zero_after_start_stop)
+  {
+    /* 用户确认回零完成并按启动；停止残余运动后建立角度积分零点。 */
+    ball_control.rod_angle_estimate_deg = 0.0f;
+    ball_control.rod_zero_valid = true;
+    ball_control.zero_after_start_stop = false;
+  }
 }
 
 static void Ball_Control_Reject_External_Y_Command(void)
 {
   if (!ball_control.start_requested || ball_control.homing_in_progress ||
+      ball_control.zero_after_start_stop ||
       (Get_Y_Step_Motor_Speed() == 0))
   {
     return;
@@ -450,9 +449,25 @@ void Ball_Control_Task(void)
 
 void Ball_Control_Start(void)
 {
+  uint32_t now_ms;
+
   if (ball_control.state == BALL_CONTROL_FAULT)
   {
     return;
+  }
+
+  /*
+   * 复位后由用户确认杆子已经回到水平。启动时先排队停止残余回零运动，
+   * 停止命令发出后立即建立软件零位，不再固定等待 2 s。
+   */
+  if (ball_control.homing_in_progress)
+  {
+    now_ms = HAL_GetTick();
+    ball_control.homing_in_progress = false;
+    ball_control.zero_after_start_stop = true;
+    ball_control.rod_zero_valid = false;
+    ball_control.commanded_motor_rpm = 0;
+    ball_control.last_actuator_update_ms = now_ms;
   }
 
   /* 先清除可能由其他模块遗留的 Y 轴速度，再等待视觉和零位有效。 */
@@ -464,9 +479,10 @@ void Ball_Control_Start(void)
 void Ball_Control_Stop(void)
 {
   /* 回零未完成时收到停止命令，当前机械位置不能再视为可信零位。 */
-  if (ball_control.homing_in_progress)
+  if (ball_control.homing_in_progress || ball_control.zero_after_start_stop)
   {
     ball_control.homing_in_progress = false;
+    ball_control.zero_after_start_stop = false;
     ball_control.rod_zero_valid = false;
   }
 
@@ -477,7 +493,7 @@ void Ball_Control_Stop(void)
 
 void Ball_Control_Reset(void)
 {
-  /* 调用方已经触发机械回零；本模块从此刻开始非阻塞等待 2 s。 */
+  /* 调用方已触发机械回零；等待用户确认杆已停止后按启动建立软件零位。 */
   Ball_Control_Clear_State(HAL_GetTick());
 }
 
